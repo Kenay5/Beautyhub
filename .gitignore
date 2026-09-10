@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+dist/
+coverage/
+*.db
+*.sqlite
+*.sqlite3
+*.py[cod]
