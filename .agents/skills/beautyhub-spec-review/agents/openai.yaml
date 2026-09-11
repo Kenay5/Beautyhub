@@ -1,0 +1,4 @@
+interface:
+  display_name: "BeautyHub Spec Review"
+  short_description: "Audit SDD consistency and RF/EARS coverage"
+  default_prompt: "Use $beautyhub-spec-review to audit the active BeautyHub spec, plan, and tasks without editing them."

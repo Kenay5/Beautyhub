@@ -1,0 +1,4 @@
+interface:
+  display_name: "Postgres Best Practices"
+  short_description: "Protect BeautyHub data and concurrent invariants"
+  default_prompt: "Use $postgres-best-practices to design or review the approved PostgreSQL task and its concurrency evidence."

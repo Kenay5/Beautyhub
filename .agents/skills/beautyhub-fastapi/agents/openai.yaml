@@ -1,0 +1,4 @@
+interface:
+  display_name: "BeautyHub FastAPI"
+  short_description: "Build thin, secure FastAPI delivery adapters"
+  default_prompt: "Use $beautyhub-fastapi to implement or review the approved FastAPI task without changing the stack or business rules."

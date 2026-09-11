@@ -1,0 +1,4 @@
+interface:
+  display_name: "BeautyHub Testing"
+  short_description: "Verify RF/EARS from domain through browser"
+  default_prompt: "Use $beautyhub-testing to verify the approved BeautyHub task and report traceable evidence."

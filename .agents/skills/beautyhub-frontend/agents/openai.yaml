@@ -1,0 +1,4 @@
+interface:
+  display_name: "BeautyHub Frontend"
+  short_description: "Build accessible React and Vite interfaces"
+  default_prompt: "Use $beautyhub-frontend to implement or review the approved responsive BeautyHub interface task."

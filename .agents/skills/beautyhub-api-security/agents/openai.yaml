@@ -1,0 +1,4 @@
+interface:
+  display_name: "BeautyHub API Security"
+  short_description: "Review BeautyHub APIs against OWASP risks"
+  default_prompt: "Use $beautyhub-api-security to perform a read-only security review of the approved BeautyHub scope."
