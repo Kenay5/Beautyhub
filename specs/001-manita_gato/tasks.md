@@ -1,9 +1,11 @@
 # Tareas — 001 Manita de Gato MVP
 
-**Estado:** listas para ejecución conforme a la spec y al plan aprobados.  
+**Estado:** listas para ejecución conforme a la spec y al plan aprobados; enmienda de tareas para RNF-06 aprobada explícitamente el 10 de septiembre de 2026.
+
 **Fuentes:** `specs/001-manita_gato/spec.md` y `specs/001-manita_gato/plan.md`.  
 **Regla de ejecución:** avanzar de arriba hacia abajo. Cada tarea está limitada a una pieza verificable de aproximadamente 20–30 minutos; si durante la implementación resulta mayor, deberá dividirse antes de continuar. Instalar dependencias y ejecutar tareas administrativas conservan sus puertas de aprobación explícitas. Los checkboxes de aprobación o revisión externa son puertas y no estimaciones de trabajo técnico.
 **Orden cruzado:** cuando se intercale esta lista con la spec 002, seguir la guía única de `specs/002-autenticacion_administrativa/tasks.md`; dentro de cada tramo se conserva el orden de este archivo.
+**Regla transversal de interfaz:** toda tarea que cree o modifique una pantalla pública o administrativa hereda RNF-06 y no está terminada si pierde contenido o funciones desde 320 píxeles CSS, produce desplazamiento horizontal general o controles superpuestos, impide teclado o zoom, carece de foco perceptible, etiquetas o errores asociados, o comunica significado únicamente mediante color.
 
 ## 1. Puertas y base del proyecto
 
@@ -26,6 +28,10 @@
 - [ ] **T004A — Configurar Playwright para pruebas web**
   - **RF:** soporte transversal para RF-01 a RF-12.
   - **Hecho cuando:** Playwright abre la aplicación de prueba y completa una comprobación mínima con datos ficticios.
+
+- [ ] **T004B — Configurar la matriz adaptable y Axe**
+  - **RF:** soporte transversal para RF-01 a RF-12; RNF-06.
+  - **Hecho cuando:** la configuración compartida ejecuta Playwright en Chromium, Firefox y WebKit a 320, 390, 768 y 1280 píxeles CSS e integra Axe sin incluirlo en el artefacto de producción.
 
 - [ ] **T005 — Configurar variables externas y sanitización básica**
   - **RF:** soporte transversal para RF-03 a RF-13.
@@ -777,9 +783,21 @@
   - **RF:** RF-04-CA-14 a RF-04-CA-25.
   - **Hecho cuando:** Playwright confirma un recordatorio sin código para una cita elegible y comprueba reprogramación, cancelación, canal fallido y reintento permitido con reloj y proveedores controlados.
 
+- [ ] **T146D — Verificar adaptabilidad y accesibilidad de la reserva pública**
+  - **RF:** RF-01, RF-02, RF-03 y RF-11; RNF-06.
+  - **Hecho cuando:** selección de sucursal, servicio, fecha, horario, datos, consentimientos y confirmación funciona con teclado en todos los tamaños configurados, sin pérdida ni desplazamiento general y sin infracciones de Axe.
+
+- [ ] **T146E — Verificar adaptabilidad y accesibilidad de la gestión pública**
+  - **RF:** RF-04, RF-05, RF-06 y RF-07; RNF-06.
+  - **Hecho cuando:** consulta, modificación, cancelación, mensajes, contactos ocultos y errores funcionan con teclado en todos los tamaños configurados, sin pérdida ni desplazamiento general y sin infracciones de Axe.
+
+- [ ] **T146F — Verificar adaptabilidad y accesibilidad de la agenda administrativa**
+  - **RF:** RF-01, RF-03, RF-06 a RF-10 y RF-12; RNF-06.
+  - **Hecho cuando:** agenda, servicios, citas, resultados, bloqueos y reenvíos conservan sus acciones en todos los tamaños configurados; cualquier tabla desplaza solo su contenedor y los estados principales no presentan infracciones de Axe.
+
 - [ ] **T147 — Ejecutar la suite completa**
   - **RF:** RF-01 a RF-13.
-  - **Hecho cuando:** pruebas unitarias, PostgreSQL, contratos y Playwright pasan sin omisiones ni datos personales reales.
+  - **Hecho cuando:** pruebas unitarias, PostgreSQL, contratos, Playwright y Axe pasan sin omisiones ni datos personales reales.
 
 - [ ] **T148 — Auditar seguridad y secretos**
   - **RF:** RF-01 a RF-13 de forma transversal.
@@ -788,6 +806,10 @@
 - [ ] **T148A — Auditar idioma y zona horaria**
   - **RF:** RF-01 a RF-13 de forma transversal.
   - **Hecho cuando:** contenido visible está en español y todos los bordes temporales usan `America/Mexico_City`.
+
+- [ ] **T148B — Comprobar citas en celulares reales y navegadores objetivo**
+  - **RF:** RF-01 a RF-12 como interfaz; RNF-06.
+  - **Hecho cuando:** existe evidencia manual satisfactoria del portal público y la administración de citas en al menos un Android y un iPhone reales, y se registró la comprobación de Chrome Android, Safari iPhone y Chrome, Edge y Firefox de escritorio conforme a la matriz vigente.
 
 - [ ] **T149 — Cerrar la matriz de trazabilidad**
   - **RF:** RF-01 a RF-13.
@@ -824,3 +846,4 @@ Esta matriz evita esperar hasta el cierre para detectar criterios sin tarea. T14
 | RNF-03 | T023, T024, T033, T034, T063, T124, T128B y T148A |
 | RNF-04 | T014, T065–T069 y T072A |
 | RNF-05 | T128B, T128C, T133, T133A y T134–T134C |
+| RNF-06 | Regla transversal de interfaz; T003, T004A, T004B, T143–T146F, T147, T148B y T150 |

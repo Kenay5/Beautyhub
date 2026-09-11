@@ -14,3 +14,4 @@
 12. **Cambios pequeños:** implementar una tarea verificable a la vez y evitar refactors o funcionalidades fuera del alcance aprobado.
 13. **Idioma:** código, identificadores, commits, logs y mensajes técnicos en inglés; contenido visible para usuarios de BeautyHub en español.
 14. **Verificación:** una tarea no está terminada hasta cumplir su spec, criterios de aceptación y verificaciones correspondientes.
+15. **Interfaz inclusiva y adaptable:** toda interfaz pública y administrativa debe conservar su contenido y funciones en pantallas desde 320 píxeles CSS, permitir el uso con teclado, zoom y tecnologías de asistencia básicas, no comunicar significado únicamente mediante color y verificarse en los navegadores y dispositivos representativos definidos por las specs vigentes.

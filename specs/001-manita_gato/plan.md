@@ -1,6 +1,7 @@
 # Plan de implementación — 001 Manita de Gato MVP
 
-**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026.  
+**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda técnica para RNF-06 aprobada explícitamente el 10 de septiembre de 2026.
+
 **Spec cubierta:** `specs/001-manita_gato/spec.md` aprobada.  
 **Dependencia:** las operaciones administrativas dependen de la autenticación y autorización definidas en `specs/002-autenticacion_administrativa/spec.md`.
 
@@ -8,7 +9,7 @@
 
 Este plan describe cómo implementar la gestión de servicios, disponibilidad y citas de Manita de Gato sin modificar el comportamiento aprobado en la spec.
 
-El stack aprobado es FastAPI con Python para el backend, React con TypeScript y Vite para el frontend, PostgreSQL con SQLAlchemy y Alembic para datos, pytest para pruebas de dominio e integración y Playwright para pruebas web. Permanecerán en un repositorio y un despliegue, sin instalar dependencias hasta autorizar la primera tarea de implementación.
+El stack aprobado es FastAPI con Python para el backend, React con TypeScript y Vite para el frontend, PostgreSQL con SQLAlchemy y Alembic para datos, pytest para pruebas de dominio e integración, Playwright para pruebas web y Axe exclusivamente para comprobaciones automatizadas de accesibilidad durante el desarrollo. Permanecerán en un repositorio y un despliegue, sin instalar dependencias hasta autorizar la primera tarea de implementación.
 
 No forman parte de este plan:
 
@@ -44,6 +45,7 @@ La lógica de negocio no dependerá de la interfaz web, del proveedor de mensaje
 | Protección contra abuso | Aplicar ventanas por IP, bloqueo por credenciales fallidas, no contar rechazos por límite y responder sin revelar citas. | RF-05 y RNF-04 |
 | Persistencia y concurrencia | Implementar PostgreSQL, escrituras atómicas y serialización de agenda; guardar operación y entregas antes de contactar proveedores. | RF-01 a RF-13; RNF-02 |
 | Continuidad operativa | Ejecutar retiros diarios y al arrancar; comprobar aplicación y base de datos; coordinar respaldos y restauraciones seguras. | RF-13 y RNF-05 |
+| Presentación y usabilidad | Construir componentes fluidos y semánticos, conservar todas las funciones desde 320 píxeles CSS y comunicar estados, foco y errores de forma perceptible. No contiene reglas del dominio. | RF-01 a RF-12 como interfaz; RNF-06 |
 
 ### 2.1 Estructura de archivos propuesta
 
@@ -64,7 +66,7 @@ Las rutas todavía no existen y solo se crearán dentro de las tareas aprobadas.
 | `frontend/src/public/` | Nueva | Reserva, consulta, modificación y cancelación para clientas. |
 | `frontend/src/admin/` | Nueva | Interfaces administrativas condicionadas a la spec 002. |
 | `frontend/src/shared/` | Nueva | Componentes visuales y contratos compartidos sin reglas de negocio. |
-| `frontend/tests/e2e/` y `frontend/playwright.config.ts` | Nuevos | Recorridos completos contra la aplicación integrada. |
+| `frontend/tests/e2e/` y `frontend/playwright.config.ts` | Nuevos | Recorridos completos, tamaños representativos, navegadores objetivo y comprobaciones Axe contra la aplicación integrada. |
 
 Las rutas técnicas utilizarán nombres en inglés. Esta tabla define fronteras y no autoriza crear archivos ni instalar dependencias por sí sola.
 
@@ -358,7 +360,7 @@ Toda consulta pública o administrativa aplicará además el límite temporal de
 **Alternativa descartada:** enviar antes del commit, revertir la cita por un fallo, automatizar WhatsApp Web de forma no oficial o acoplar el dominio a un proveedor.  
 **RF cubiertos:** RF-03, RF-04, RF-06, RF-07 y RF-12.
 
-### DT-06. Protección móvil inicial en PostgreSQL
+### DT-06. Protección mediante ventanas temporales en PostgreSQL
 
 **Decisión:** implementar ventanas móviles y bloqueos con eventos mínimos en PostgreSQL, protegidos contra concurrencia por clave.  
 **Justificación:** conserva exactitud, evita añadir otra dependencia y basta para el volumen inicial.  
@@ -404,6 +406,18 @@ Toda consulta pública o administrativa aplicará además el límite temporal de
 **RF cubiertos:** RF-04-CA-14 a RF-04-CA-25.  
 **RNF cubiertos:** RNF-01, RNF-02 y RNF-05.
 
+### DT-12. Interfaz adaptable y accesibilidad verificable
+
+**Decisión:** construir la interfaz con HTML semántico y composición fluida orientada primero a pantallas pequeñas. Los puntos de ajuste responderán al contenido y se verificarán al menos a 320, 390, 768 y 1280 píxeles CSS; la página no generará desplazamiento horizontal general y las tablas administrativas usarán desplazamiento interno solo cuando no exista una presentación más clara. Los controles táctiles tendrán un área operable objetivo de al menos 44 por 44 píxeles CSS, excepto enlaces integrados en texto. El foco visible, el orden de teclado, los nombres accesibles, las etiquetas, los errores asociados, el zoom y los estados que no dependan solo del color formarán parte de los componentes compartidos.
+
+**Justificación:** una base común evita corregir cada pantalla al final, conserva todas las funciones en celulares y convierte RNF-06 en verificaciones repetibles. `@axe-core/playwright` será una dependencia exclusiva de desarrollo: analizará los estados principales dentro de Playwright, no se incluirá en el artefacto de producción ni generará costo de alojamiento. Cada recorrido principal deberá terminar sin infracciones reportadas por Axe; la revisión manual cubrirá los aspectos que una herramienta automática no puede comprobar.
+
+**Alternativa descartada:** crear una versión móvil separada, ocultar funciones administrativas en pantallas pequeñas o depender únicamente de una inspección visual final; duplicaría mantenimiento o dejaría requisitos sin evidencia constante.
+
+**RF cubiertos:** RF-01 a RF-12 como capa de presentación, sin modificar su comportamiento.
+
+**RNF cubierto:** RNF-06.
+
 ## 8. Modelo de amenazas y controles
 
 | Riesgo | Control previsto | Verificación | Cobertura |
@@ -432,6 +446,7 @@ Los controles de sesión, CSRF y autenticación administrativa pertenecen al pla
 - se usarán únicamente datos ficticios;
 - el reloj, secretos, Resend y WhatsApp se sustituirán por dobles controlados en pruebas;
 - la suite incluirá solicitudes concurrentes reales para las operaciones de agenda;
+- las interfaces se comprobarán desde 320 píxeles CSS con Playwright, Axe, teclado y tamaños representativos, sin sustituir la revisión manual en dispositivos reales;
 - ningún RF se considerará cubierto solo por una prueba de interfaz.
 
 ### 9.2 Pruebas unitarias de dominio
@@ -505,9 +520,11 @@ Los controles de sesión, CSRF y autenticación administrativa pertenecen al pla
 - administradora gestiona servicio, agenda, bloqueos, resultados y reenvío con permisos de la spec 002;
 - una cita de Texcoco impide horarios incompatibles en Chiconcuac para el mismo profesional;
 - la interfaz mantiene mensajes en español y no expone secretos ni detalles internos.
+- los recorridos públicos y administrativos se ejecutan en Chromium, Firefox y WebKit a tamaños representativos desde 320 píxeles CSS, sin desplazamiento horizontal general, contenido perdido ni controles superpuestos;
+- los estados principales no presentan infracciones de Axe y conservan operación por teclado, foco visible, etiquetas y errores asociados, zoom y significado independiente del color.
 
 **RF cubiertos:** RF-01 a RF-12.  
-**RNF cubiertos:** RNF-01, RNF-02 y RNF-03.
+**RNF cubiertos:** RNF-01, RNF-02, RNF-03 y RNF-06.
 
 ### 9.6 Pruebas de retiro y privacidad
 
@@ -550,6 +567,7 @@ Los controles de sesión, CSRF y autenticación administrativa pertenecen al pla
 | 8–10 | Pruebas de autenticación/autorización, sanitización, aislamiento público y escaneo para impedir secretos o `.env` versionados. |
 | 11–12 | Aprobación humana del plan y cambios pequeños conforme a la secuencia de la sección 10, sin refactors ajenos. |
 | 13 | Comprobación de identificadores, logs y mensajes técnicos en inglés, y contenido visible en español. |
+| 15 | Playwright y Axe desde 320 píxeles CSS, navegación por teclado y revisión manual en Android e iPhone antes de publicar. |
 
 ### 9.9 Comandos de verificación previstos
 
@@ -580,7 +598,7 @@ Cada etapa debe terminar con sus pruebas antes de avanzar.
 6. **Mensajería:** correo, WhatsApp, resultados independientes, recordatorio durable y reenvío. **RF:** RF-04 y RF-12.
 7. **Administración:** contratos de agenda y servicios conectados a permisos de la spec 002. **RF:** RF-01, RF-03, RF-06, RF-07, RF-08, RF-09, RF-10 y RF-12.
 8. **Retención y protección:** retiro diario y al arrancar, estadísticas, límites, limpieza, respaldos y comprobación de salud. **RF:** RF-05 y RF-13; **RNF:** RNF-04 y RNF-05.
-9. **Verificación final:** suite completa, criterios de aceptación, seguridad y revisión de trazabilidad. **RF:** RF-01 a RF-13; **RNF:** RNF-01 a RNF-05.
+9. **Verificación final:** suite completa, criterios de aceptación, seguridad, adaptabilidad, accesibilidad, compatibilidad y revisión de trazabilidad. **RF:** RF-01 a RF-13; **RNF:** RNF-01 a RNF-06.
 
 ## 11. Verificaciones para considerar implementada la spec
 
@@ -594,6 +612,7 @@ Cada etapa debe terminar con sus pruebas antes de avanzar.
 - cada cita pública o administrativa elegible produce un solo recordatorio por canal sin código privado; reinicios, reprogramaciones, cancelaciones y concurrencia respetan los umbrales, omisiones y reintentos aprobados sin modificar la cita;
 - los simuladores permiten desarrollar y automatizar pruebas, pero RF-04 y RF-12 solo se consideran implementados después de comprobar en un entorno controlado los envíos reales de correo y WhatsApp, incluidos el éxito y el fallo independiente de cada canal;
 - el retiro se ejecuta a las 00:00 y antes del tráfico tras un arranque; la frecuencia y conservación de respaldos y la comprobación de salud cumplen RNF-05;
+- las interfaces públicas y administrativas cumplen RNF-06 en la matriz automatizada de tamaños y navegadores, sin infracciones de Axe en los recorridos principales, y existe evidencia manual satisfactoria en un Android y un iPhone reales antes de publicar;
 - la validación jurídica pendiente se trata como puerta de salida a producción, no como requisito ya resuelto por este plan.
 
 ## 12. Puertas y riesgos todavía vigentes

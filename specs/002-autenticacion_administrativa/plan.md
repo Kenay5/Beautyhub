@@ -1,6 +1,7 @@
 # Plan de implementación — 002 Autenticación y autorización administrativa
 
-**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026.  
+**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda técnica para RNF-05 aprobada explícitamente el 10 de septiembre de 2026.
+
 **Spec cubierta:** `specs/002-autenticacion_administrativa/spec.md`, activa y aprobada.  
 **Dependencia funcional:** `specs/001-manita_gato/spec.md`, sin redefinir sus reglas de citas.  
 **Dependencia técnica:** `specs/001-manita_gato/plan.md`, cuyo stack, despliegue y límites de costo se reutilizan cuando son compatibles.
@@ -78,6 +79,7 @@ El dominio y los casos de uso no importan FastAPI, React, SQLAlchemy, PostgreSQL
 | Protección contra abuso | Fallos compartidos, bloqueos y cuatro límites móviles. | RF-03-CA-02 a CA-12; RNF-01 |
 | Historial | Eventos mínimos, consulta exclusiva, inmutabilidad y retiro a 12 meses. | RF-09-CA-02 y CA-03; RF-11-CA-01 a CA-09 |
 | Avisos de seguridad | Destinatarios, deduplicación, fallos y conservación de la acción segura. | RF-12-CA-01 a CA-10; soporte de RF-02, RF-05, RF-06, RF-07, RF-08 y RF-09 |
+| Presentación y usabilidad | Reutilizar los componentes fluidos y semánticos del plan 001 para autenticación, seguridad e historial, conservando permisos y secretos fuera de la capa visual. | RF-01 a RF-12 como interfaz; RNF-05 |
 
 ### 3.2 Flujo de datos
 
@@ -588,6 +590,16 @@ Las operaciones administrativas de la spec 001 usan la misma cookie, CSRF y pol�
 **Alternativa descartada:** publicar inmediatamente la copia restaurada o confiar solo en los vencimientos originales.  
 **Cobertura:** RF-04-CA-07 y CA-08; RF-06-CA-10 y CA-11; RF-07-CA-08 y CA-23; RF-08-CA-05 y CA-07; RF-09-CA-01; RF-11-CA-07; RNF-01 a RNF-03.
 
+### DT-14. Interfaz administrativa adaptable y accesible
+
+**Decisión:** reutilizar la base de presentación de DT-12 del plan 001: HTML semántico, composición fluida, foco visible, operación por teclado, etiquetas y errores asociados, zoom permitido, estados independientes del color y controles táctiles con área operable objetivo de al menos 44 por 44 píxeles CSS salvo enlaces integrados en texto. Los flujos se verificarán al menos a 320, 390, 768 y 1280 píxeles CSS. Las tablas de agenda o historial solo podrán desplazarse horizontalmente dentro de su contenedor cuando sea indispensable y deberán mantener accesibles sus encabezados y acciones.
+
+**Justificación:** la autenticación y las tareas del negocio deben poder completarse desde un celular sin crear una interfaz distinta ni trasladar autorización al navegador. La misma configuración compartida de Playwright y `@axe-core/playwright` verifica Chromium, Firefox y WebKit sin añadir una quinta dependencia específica de seguridad ni código de prueba al artefacto de producción.
+
+**Alternativa descartada:** una aplicación administrativa exclusiva de escritorio, una versión móvil separada o pruebas únicamente manuales, porque perderían funciones en celulares, duplicarían mantenimiento o no detectarían regresiones de forma repetible.
+
+**Cobertura:** RF-01 a RF-12 como capa de presentación; RNF-05.
+
 ### 19.1 Dependencias nuevas justificadas
 
 | Dependencia candidata | Uso exclusivo | Motivo para no implementarlo manualmente |
@@ -596,6 +608,8 @@ Las operaciones administrativas de la spec 001 usan la misma cookie, CSRF y pol�
 | `PyOTP` | TOTP RFC 6238. | Evita errores de estándar, ventana y formato. |
 | `cryptography` | AES-GCM y derivación de claves. | Primitivas revisadas y autenticadas. |
 | `qrcode.react` | Mostrar localmente el URI TOTP durante configuración. | El formato QR no es lógica de negocio y no debe enviarse a un tercero. |
+
+`@axe-core/playwright` se reutiliza como dependencia compartida exclusivamente de desarrollo, ya justificada en DT-12 del plan 001. No se cuenta entre las cuatro dependencias nuevas de seguridad de esta spec, no se entrega en producción y no genera un servicio ni costo de alojamiento.
 
 No se añaden Redis, JWT, OAuth, Celery, un KMS externo ni una API de contraseñas comprometidas. Las versiones exactas y licencias se verificarán y fijarán únicamente cuando una tarea posterior reciba autorización explícita para instalar dependencias.
 
@@ -675,8 +689,10 @@ No se añaden Redis, JWT, OAuth, Celery, un KMS externo ni una API de contraseñ
 - códigos mostrados una vez, sesión reemplazada y expiraciones exactas con reloj controlado;
 - propietario consulta filtros del historial; personal y no autenticada reciben denegación;
 - navegación y sondeos demuestran qué actividad reinicia o no el límite de inactividad.
+- activación, inicio de sesión, recuperación, configuración de factores, gestión del personal e historial se recorren en Chromium, Firefox y WebKit a tamaños representativos desde 320 píxeles CSS, sin desplazamiento horizontal general, contenido perdido ni controles superpuestos;
+- los estados principales no presentan infracciones de Axe y conservan operación por teclado, foco visible, etiquetas y errores asociados, zoom y significado independiente del color.
 
-**Cobertura:** RF-01 a RF-12, sin usar Playwright como única prueba de una regla crítica.
+**Cobertura:** RF-01 a RF-12 y RNF-05, sin usar Playwright como única prueba de una regla crítica.
 
 ### 20.8 Comandos previstos
 
@@ -706,6 +722,7 @@ Ningún comando se ejecuta ni se considera disponible por la mera aprobación de
 | Persistencia | Todo estado duradero se guarda en PostgreSQL. |
 | Comprensión y cambios pequeños | Revisión humana, aprobación explícita y secuencia antes de generar tareas. |
 | Idioma | Identificadores y logs en inglés; mensajes y contenido de BeautyHub en español. |
+| Interfaz inclusiva y adaptable | Playwright y Axe desde 320 píxeles CSS, teclado y revisión manual en Android e iPhone antes de publicar. |
 
 ## 21. Matriz de cobertura de los 128 criterios EARS
 
@@ -857,8 +874,8 @@ Cada etapa deberá dividirse después en tareas de 20–30 minutos, pero este pl
 7. **Personal y autorización:** desactivación, reemplazo y conexión con spec 001. **Cobertura:** RF-09 y RF-10.
 8. **Historial y retención:** eventos, filtros y retiro. **Cobertura:** RF-11.
 9. **Correo de seguridad:** todos los destinatarios, enlaces y fallos. **Cobertura:** RF-02, RF-05 a RF-09 y RF-12.
-10. **Interfaz y E2E:** recorridos completos en español y matriz negativa. **Cobertura:** RF-01 a RF-12.
-11. **Verificación final:** 128 criterios, constitución, seguridad, costo y revisión humana. **Cobertura:** RF-01 a RF-12 y RNF-01 a RNF-04.
+10. **Interfaz y E2E:** recorridos completos en español, matriz negativa, adaptabilidad, accesibilidad y compatibilidad. **Cobertura:** RF-01 a RF-12 y RNF-05.
+11. **Verificación final:** 128 criterios, constitución, seguridad, costo y revisión humana. **Cobertura:** RF-01 a RF-12 y RNF-01 a RNF-05.
 
 ## 23. Finalización, riesgos y puertas pendientes
 
@@ -874,6 +891,7 @@ Cada etapa deberá dividirse después en tareas de 20–30 minutos, pero este pl
 - las acciones confirmadas sobreviven a fallos de aviso y los enlaces fallidos dejan el estado seguro exigido;
 - los eventos y datos identificables del personal se retiran a 12 meses;
 - React muestra español y los nombres técnicos y logs permanecen en inglés;
+- autenticación y administración cumplen RNF-05 en la matriz automatizada de tamaños y navegadores, sin infracciones de Axe en los recorridos principales, y existe evidencia manual satisfactoria en un Android y un iPhone reales antes de publicar;
 - el costo previsto permanece dentro del objetivo aprobado y no se activa infraestructura adicional;
 - el responsable puede explicar y aprueba explícitamente el resultado antes de implementar.
 
@@ -891,4 +909,4 @@ Cada etapa deberá dividirse después en tareas de 20–30 minutos, pero este pl
 
 ## 24. Aprobación registrada
 
-El responsable aprobó explícitamente este plan el 9 de septiembre de 2026. Puede generarse `tasks.md`, pero comenzar la implementación y efectuar cada instalación de dependencias conserva sus puertas de aprobación explícita.
+El responsable aprobó explícitamente este plan el 9 de septiembre de 2026 y su enmienda técnica para RNF-05 el 10 de septiembre de 2026. Puede generarse `tasks.md`, pero comenzar la implementación y efectuar cada instalación de dependencias conserva sus puertas de aprobación explícita.

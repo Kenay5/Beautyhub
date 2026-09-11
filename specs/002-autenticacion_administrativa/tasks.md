@@ -1,9 +1,11 @@
 # Tareas — 002 Autenticación y autorización administrativa
 
-**Estado:** aprobadas explícitamente por el responsable del proyecto el 9 de septiembre de 2026; listas para ejecución conforme a la spec y al plan aprobados.  
+**Estado:** aprobadas explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda de tareas para RNF-05 aprobada explícitamente el 10 de septiembre de 2026; listas para ejecución conforme a la spec y al plan aprobados.
+
 **Fuentes:** `specs/002-autenticacion_administrativa/spec.md`, `specs/002-autenticacion_administrativa/plan.md` y las fronteras aprobadas de `specs/001-manita_gato/`.  
 **Regla de ejecución:** avanzar en orden. Cada tarea representa aproximadamente 20–30 minutos; si durante la implementación excede ese tamaño, deberá dividirse sin ampliar el alcance. Las puertas de aprobación y publicación son comprobaciones, no estimaciones técnicas.  
 **Alcance cruzado:** estas tareas implementan identidad y autorización; no repiten la lógica de citas asignada en `specs/001-manita_gato/tasks.md`.
+**Regla transversal de interfaz:** toda tarea que cree o modifique una pantalla de autenticación o administración hereda RNF-05 y no está terminada si pierde contenido o funciones desde 320 píxeles CSS, produce desplazamiento horizontal general o controles superpuestos, impide teclado o zoom, carece de foco perceptible, etiquetas o errores asociados, o comunica significado únicamente mediante color.
 
 ## Orden coordinado con la spec 001
 
@@ -44,7 +46,7 @@
   - **Hecho cuando:** pruebas simulan aceptación, rechazo, incertidumbre y fallo tardío sin red, secretos ni datos personales reales.
 
 - [ ] **T008 — Establecer verificaciones ejecutables de la spec 002**
-  - **RF/criterios:** soporte transversal de RF-01 a RF-12 y RNF-01 a RNF-04.
+  - **RF/criterios:** soporte transversal de RF-01 a RF-12 y RNF-01 a RNF-05.
   - **Hecho cuando:** cada grupo de pruebas tiene un comando documentado y ningún comando exige secretos incorporados al repositorio.
 
 ## 2. PostgreSQL e invariantes
@@ -447,6 +449,18 @@
   - **RF/criterios:** RF-01 a RF-12; RF-03-CA-08; RF-07-CA-24; RF-12-CA-06.
   - **Hecho cuando:** recorridos administrativos son comprensibles en español y URL, historial, logs y almacenamiento web no contienen secretos.
 
+- [ ] **T104A — Verificar adaptabilidad y accesibilidad de autenticación**
+  - **RF/criterios:** RF-01 a RF-08; RNF-05.
+  - **Hecho cuando:** activación, inicio y cierre de sesión, recuperación, contraseña, TOTP, códigos y cambio de correo funcionan con teclado en Chromium, Firefox y WebKit a 320, 390, 768 y 1280 píxeles CSS, sin pérdida ni desplazamiento general y sin infracciones de Axe.
+
+- [ ] **T104B — Verificar adaptabilidad y accesibilidad administrativa**
+  - **RF/criterios:** RF-09 a RF-12 y la integración autorizada con la spec 001; RNF-05.
+  - **Hecho cuando:** gestión del personal, permisos, avisos e historial conservan sus acciones en todos los tamaños configurados; cualquier tabla desplaza solo su contenedor y los estados principales no presentan infracciones de Axe.
+
+- [ ] **T104C — Comprobar autenticación y administración en celulares reales**
+  - **RF/criterios:** RF-01 a RF-12 como interfaz; RNF-05.
+  - **Hecho cuando:** existe evidencia manual satisfactoria de autenticación y administración en al menos un Android y un iPhone reales y se registró la matriz de navegadores objetivo.
+
 - [ ] **T105 — Verificar el contrato operativo de Resend**
   - **RF/criterios:** RF-02-CA-09; RF-12-CA-07 a CA-10; RNF-01 y RNF-04.
   - **Hecho cuando:** idempotencia, webhooks, estados, reintentos y conservación compatible están comprobados antes del adaptador real.
@@ -460,7 +474,7 @@
   - **Hecho cuando:** actualización local es repetible y parámetros medidos resisten la concurrencia prevista sin debilitar seguridad ni exceder presupuesto.
 
 - [ ] **T108 — Verificar costo, secretos y dependencias del despliegue**
-  - **RF/criterios:** RF-01 a RF-12; RNF-01, RNF-03 y RNF-04.
+  - **RF/criterios:** RF-01 a RF-12; RNF-01, RNF-03, RNF-04 y RNF-05.
   - **Hecho cuando:** objetivo de 100 MXN y alerta de 85 MXN permanecen, licencias/versiones están fijadas y el escaneo no encuentra secretos ni acceso privado público.
 
 - [ ] **T109 — Cerrar la puerta jurídica antes de publicar**
@@ -468,8 +482,8 @@
   - **Hecho cuando:** el responsable registra la validación jurídica del aviso de privacidad aplicable a la web terminada.
 
 - [ ] **T110 — Ejecutar verificación final y obtener aprobación**
-  - **RF/criterios:** RF-01 a RF-12 y sus 128 criterios; RNF-01 a RNF-04.
-  - **Hecho cuando:** unitarias, PostgreSQL, migraciones, contrato, seguridad, concurrencia y Playwright pasan; la matriz tiene 128 evidencias y el responsable autoriza por separado implementación, secretos reales y publicación.
+  - **RF/criterios:** RF-01 a RF-12 y sus 128 criterios; RNF-01 a RNF-05.
+  - **Hecho cuando:** unitarias, PostgreSQL, migraciones, contrato, seguridad, concurrencia, Playwright y Axe pasan; la matriz tiene 128 evidencias, las comprobaciones móviles están documentadas y el responsable autoriza por separado implementación, secretos reales y publicación.
 
 ## 10. Matriz primaria de los 128 criterios EARS
 
@@ -605,6 +619,8 @@ Cada criterio aparece exactamente una vez en esta matriz. Las menciones adiciona
 | RF-12-CA-08 | T097 |
 | RF-12-CA-09 | T097 |
 | RF-12-CA-10 | T097 |
+
+**Cobertura no funcional RNF-05:** regla transversal de interfaz; T003, T008, T041, T042, T056, T077–T079, T090, T104–T104C, T108 y T110.
 
 ## 11. Puertas de ejecución
 

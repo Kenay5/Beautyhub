@@ -1,6 +1,6 @@
 # Especificación 001 — Gestión inicial de citas y servicios
 
-**Estado:** Activa; aprobada explícitamente por el responsable del proyecto el 9 de septiembre de 2026.
+**Estado:** Activa; aprobada explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda no funcional RNF-06 aprobada explícitamente el 10 de septiembre de 2026.
 
 ## Contexto y objetivo
 
@@ -348,6 +348,16 @@ El administrador puede crear, editar y eliminar bloqueos únicos; los bloqueos r
 - Toda restauración deberá realizarse de forma aislada y ejecutar el retiro de RF-13 antes de admitir tráfico de usuarios.
 - La aplicación deberá ofrecer una comprobación técnica de salud que confirme su funcionamiento y la disponibilidad de PostgreSQL sin revelar datos ni detalles internos; un fallo deberá generar una alerta operativa para el responsable del proyecto mediante un mecanismo incluido en el presupuesto aprobado.
 
+### RNF-06 — Adaptabilidad, accesibilidad y compatibilidad
+
+- Toda interfaz pública y administrativa incluida en esta spec debe ser comprensible y completamente utilizable mediante un diseño fluido desde 320 píxeles CSS de ancho en adelante.
+- Ninguna página debe presentar desplazamiento horizontal general, contenido o funciones ocultos o perdidos ni controles superpuestos. Una tabla administrativa puede usar desplazamiento horizontal dentro de su propio contenedor solo cuando sea indispensable y debe conservar todas sus acciones utilizables.
+- El texto debe ser legible sin obligar a ampliar la página; el sistema no debe impedir el zoom del navegador y los controles deben poder utilizarse cómodamente mediante una pantalla táctil.
+- Cada campo debe tener una etiqueta explícita y cada error debe mostrarse cerca del campo correspondiente y estar asociado con él para tecnologías de asistencia.
+- Todas las funciones deben poder operarse con teclado, el foco debe ser perceptible, la estructura y los nombres accesibles deben permitir navegación básica con lector de pantalla y ningún significado debe depender únicamente del color.
+- La compatibilidad objetivo comprende Chrome en Android, Safari en iPhone y Chrome, Edge y Firefox de escritorio en su versión estable vigente y la versión principal inmediatamente anterior al momento de publicar.
+- Los recorridos principales deben superar comprobaciones automatizadas de adaptabilidad y accesibilidad en tamaños representativos desde 320 píxeles CSS. Antes de publicar, el portal público y las funciones administrativas de citas deben superar además una comprobación manual en al menos un dispositivo Android y un iPhone reales.
+
 ## Casos límite
 
 - Una cita solicitada públicamente exactamente una hora antes está permitida; un segundo después del límite debe rechazarse.
@@ -423,7 +433,7 @@ El administrador puede crear, editar y eliminar bloqueos únicos; los bloqueos r
 - Eliminación física inmediata de citas canceladas.
 - Reactivación o cambio de citas con estado final.
 - Bloqueo, acceso restringido y conservación individual de datos después del retiro operativo por obligaciones legales; estos comportamientos deberán definirse en una especificación posterior basada en una política de conservación jurídicamente revisada.
-- Decisiones de interfaz, arquitectura, proveedores o implementación.
+- Diseño visual específico, arquitectura, proveedores o detalles de implementación, salvo las garantías no funcionales de adaptabilidad, accesibilidad y compatibilidad definidas en RNF-06.
 
 ## Criterios de finalización
 
@@ -440,6 +450,8 @@ El administrador puede crear, editar y eliminar bloqueos únicos; los bloqueos r
 - Las pruebas cubren los estados aceptado, entregado y fallido de cada canal, los fallos tardíos y el reintento administrativo sin generar ni revelar un código nuevo.
 - Las pruebas cubren el umbral exacto de más de 24 horas, citas públicas y administrativas, reprogramaciones, cancelaciones, recuperación después de una interrupción, corte exacto de 60 minutos, contactos vigentes, contenido sin código privado, independencia de canales, ausencia de reintentos automáticos, máximo de tres reintentos con separación de cinco minutos y envíos concurrentes sin duplicados.
 - Las pruebas cubren el retiro diario y al iniciar la aplicación, la denegación inmediata de acceso a citas vencidas, la frecuencia y conservación de respaldos y la comprobación de salud sin exposición de detalles internos.
+- Las pruebas de interfaz cubren desde 320 píxeles CSS el portal público y la administración de citas sin desplazamiento horizontal general, pérdida de contenido ni controles superpuestos; comprueban teclado, foco, etiquetas, errores asociados, zoom, significado independiente del color y ausencia de infracciones detectadas automáticamente en los recorridos principales.
+- Antes de publicar, se documenta una comprobación manual satisfactoria del portal público y de las funciones administrativas de citas en al menos un Android y un iPhone reales, además de la matriz de navegadores objetivo.
 - Ningún dato privado queda accesible públicamente fuera de las reglas del código privado.
 - Todas las verificaciones del proyecto y pruebas existentes pasan.
 - El responsable del proyecto revisa, comprende y aprueba explícitamente la spec antes de convertirla en activa.

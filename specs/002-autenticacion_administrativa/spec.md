@@ -1,6 +1,6 @@
 # Especificación 002 — Autenticación y autorización administrativa
 
-**Estado:** Activa; aprobada explícitamente por el responsable del proyecto el 9 de septiembre de 2026.
+**Estado:** Activa; aprobada explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda no funcional RNF-05 aprobada explícitamente el 10 de septiembre de 2026.
 
 ## Contexto y objetivo
 
@@ -296,6 +296,16 @@ Como administrador, quiero recibir avisos cuando ocurra un cambio o bloqueo rele
 - Todo contenido visible para usuarios de BeautyHub debe presentarse en español.
 - Los plazos, bloqueos, expiraciones y registros de tiempo deben evaluarse de forma consistente en `America/Mexico_City`.
 
+### RNF-05 — Adaptabilidad, accesibilidad y compatibilidad
+
+- Toda interfaz de autenticación y administración incluida en esta spec debe ser comprensible y completamente utilizable mediante un diseño fluido desde 320 píxeles CSS de ancho en adelante.
+- Ninguna página debe presentar desplazamiento horizontal general, contenido o funciones ocultos o perdidos ni controles superpuestos. Una tabla administrativa puede usar desplazamiento horizontal dentro de su propio contenedor solo cuando sea indispensable y debe conservar todas sus acciones utilizables.
+- El texto debe ser legible sin obligar a ampliar la página; el sistema no debe impedir el zoom del navegador y los controles deben poder utilizarse cómodamente mediante una pantalla táctil.
+- Cada campo debe tener una etiqueta explícita y cada error debe mostrarse cerca del campo correspondiente y estar asociado con él para tecnologías de asistencia.
+- Todas las funciones deben poder operarse con teclado, el foco debe ser perceptible, la estructura y los nombres accesibles deben permitir navegación básica con lector de pantalla y ningún significado debe depender únicamente del color.
+- La compatibilidad objetivo comprende Chrome en Android, Safari en iPhone y Chrome, Edge y Firefox de escritorio en su versión estable vigente y la versión principal inmediatamente anterior al momento de publicar.
+- Los recorridos principales deben superar comprobaciones automatizadas de adaptabilidad y accesibilidad en tamaños representativos desde 320 píxeles CSS. Antes de publicar, la autenticación y administración deben superar además una comprobación manual en al menos un dispositivo Android y un iPhone reales.
+
 ## Casos límite
 
 - Una quinta autenticación fallida dentro de 15 minutos activa el bloqueo; cuatro no lo activan.
@@ -388,6 +398,8 @@ Como administrador, quiero recibir avisos cuando ocurra un cambio o bloqueo rele
 - Las verificaciones de seguridad confirman que contraseñas, secretos, códigos, sesiones y enlaces no aparecen en respuestas no autorizadas, historial ni registros técnicos, que el código QR o clave del segundo factor no puede consultarse después de su activación y que todos los identificadores de enlaces temporales cumplen el mínimo de 128 bits sin incorporar datos personales.
 - Las pruebas cubren el reemplazo atómico del segundo factor con una sesión o mediante contraseña y correo, la confirmación obligatoria del factor nuevo antes de invalidar el anterior, la conservación de factor, códigos y sesiones ante procesos interrumpidos o fallidos, la generación de códigos nuevos y el cierre de sesiones únicamente al completar el cambio, enlaces vencidos, sustituidos o reutilizados, correos inexistentes, cuentas pendientes, desactivadas o bloqueadas, contraseñas recién recuperadas y solicitudes sin contraseña válida, sin diferencias observables en sus respuestas de rechazo; también demuestran que una autenticación con el factor anterior o un código de recuperación elimina únicamente la restricción correspondiente.
 - Las pruebas cubren los cuatro límites de volumen, sus ventanas móviles, sus valores exactos, el conteo de reintentos manuales de notificaciones de citas, el conteo único de operaciones con dos canales, la continuidad de avisos automáticos de seguridad y recordatorios automáticos de citas, y la aplicación del límite más restrictivo cuando coincidan.
+- Las pruebas de interfaz cubren desde 320 píxeles CSS los flujos de autenticación y administración sin desplazamiento horizontal general, pérdida de contenido ni controles superpuestos; comprueban teclado, foco, etiquetas, errores asociados, zoom, significado independiente del color y ausencia de infracciones detectadas automáticamente en los recorridos principales.
+- Antes de publicar, se documenta una comprobación manual satisfactoria de autenticación y administración en al menos un Android y un iPhone reales, además de la matriz de navegadores objetivo.
 - Todas las verificaciones del proyecto y pruebas existentes pasan.
 - El responsable del proyecto revisa, comprende y aprueba explícitamente esta spec antes de convertirla en activa.
 
