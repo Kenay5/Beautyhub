@@ -9,7 +9,7 @@
 
 ## 1. Puertas y base del proyecto
 
-- [ ] **T001 — Obtener autorización para instalar el stack aprobado**
+- [x] **T001 — Obtener autorización para instalar el stack aprobado**
   - **RF:** soporte transversal para RF-01 a RF-13.
   - **Hecho cuando:** existe aprobación explícita para instalar únicamente las dependencias enumeradas en el plan.
 
