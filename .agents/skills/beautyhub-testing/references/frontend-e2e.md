@@ -6,7 +6,7 @@
 2. Use the repository's `npm` and Playwright scripts and its configured integrated application. Do not substitute `pnpm` or create a second test harness.
 3. Establish page identity, meaningful content, absence of framework overlays, and relevant console health.
 4. Exercise the target interaction and assert the resulting visible state plus the durable backend outcome where applicable.
-5. Run the browser projects, sizes, and journeys required by the active plan. At minimum, preserve the approved Chromium, Firefox, and WebKit coverage and representative 320, 390, 768, and 1280 CSS-pixel layouts.
+5. Run the browser projects, sizes, and journeys required by the active plan. Preserve the complete approved browser and viewport matrix without silently adding, removing, or substituting targets.
 6. Keep screenshots, traces, and temporary debug scripts outside the repository unless the task explicitly approves committed evidence.
 
 An interactive browser may help diagnose a rendered failure, but it does not replace the reproducible Playwright suite.
@@ -27,4 +27,4 @@ An interactive browser may help diagnose a rendered failure, but it does not rep
 
 ## Result report
 
-State the environment, command, flow, browser/viewport, result, evidence, failures, and remaining risk. A build pass does not prove rendered behavior; a Chromium pass does not prove the full approved browser matrix.
+State the environment, command, flow, browser/viewport, result, evidence, failures, and remaining risk. A build pass does not prove rendered behavior; a pass in one browser engine does not prove the full approved browser matrix.

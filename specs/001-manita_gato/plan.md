@@ -1,6 +1,6 @@
 # Plan de implementación — 001 Manita de Gato MVP
 
-**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda técnica para RNF-06 aprobada explícitamente el 10 de septiembre de 2026.
+**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda técnica para RNF-06 aprobada explícitamente el 10 de septiembre de 2026; ajuste de compatibilidad del MVP aprobado explícitamente el 12 de septiembre de 2026.
 
 **Spec cubierta:** `specs/001-manita_gato/spec.md` aprobada.  
 **Dependencia:** las operaciones administrativas dependen de la autenticación y autorización definidas en `specs/002-autenticacion_administrativa/spec.md`.
@@ -232,6 +232,7 @@ Solo se calculan alternativas cuando la fecha y hora solicitadas son válidas, p
 |---|---|---|---|---|
 | Consultar servicios | Sucursal | Servicios activos disponibles | Validación; límite excedido | RF-01 |
 | Consultar disponibilidad | Sucursal, servicio y fecha | Inicios válidos | Validación; límite excedido | RF-02 |
+| Consultar aviso de privacidad vigente | Ninguna | Versión y contenido vigentes | Aviso no disponible | RF-03, RF-13 |
 | Emitir referencia de confirmación | Contexto de solicitud | Referencia secreta y vencimiento | Límite excedido | RF-03 |
 | Crear cita | Referencia, datos de clienta, sucursal, servicio, fecha, hora y aceptación | Confirmación, código privado y estado por canal | Validación; conflicto con alternativas; referencia inválida; límite | RF-03, RF-04, RF-11 |
 | Repetir confirmación | Misma referencia y misma solicitud | Mismo resultado original, sin nueva cita ni nuevos envíos | Referencia inválida o vencida | RF-03, RF-04 |
@@ -520,7 +521,7 @@ Los controles de sesión, CSRF y autenticación administrativa pertenecen al pla
 - administradora gestiona servicio, agenda, bloqueos, resultados y reenvío con permisos de la spec 002;
 - una cita de Texcoco impide horarios incompatibles en Chiconcuac para el mismo profesional;
 - la interfaz mantiene mensajes en español y no expone secretos ni detalles internos.
-- los recorridos públicos y administrativos se ejecutan en Chromium, Firefox y WebKit a tamaños representativos desde 320 píxeles CSS, sin desplazamiento horizontal general, contenido perdido ni controles superpuestos;
+- los recorridos públicos y administrativos se ejecutan en Chromium y WebKit a tamaños representativos desde 320 píxeles CSS, sin desplazamiento horizontal general, contenido perdido ni controles superpuestos;
 - los estados principales no presentan infracciones de Axe y conservan operación por teclado, foco visible, etiquetas y errores asociados, zoom y significado independiente del color.
 
 **RF cubiertos:** RF-01 a RF-12.  

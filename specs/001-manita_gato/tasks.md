@@ -1,6 +1,6 @@
 # Tareas — 001 Manita de Gato MVP
 
-**Estado:** listas para ejecución conforme a la spec y al plan aprobados; enmienda de tareas para RNF-06 aprobada explícitamente el 10 de septiembre de 2026.
+**Estado:** listas para ejecución conforme a la spec y al plan aprobados; enmienda de tareas para RNF-06 aprobada explícitamente el 10 de septiembre de 2026; ajuste de compatibilidad del MVP aprobado explícitamente el 12 de septiembre de 2026.
 
 **Fuentes:** `specs/001-manita_gato/spec.md` y `specs/001-manita_gato/plan.md`.  
 **Regla de ejecución:** avanzar de arriba hacia abajo. Cada tarea está limitada a una pieza verificable de aproximadamente 20–30 minutos; si durante la implementación resulta mayor, deberá dividirse antes de continuar. Instalar dependencias y ejecutar tareas administrativas conservan sus puertas de aprobación explícitas. Los checkboxes de aprobación o revisión externa son puertas y no estimaciones de trabajo técnico.
@@ -13,459 +13,463 @@
   - **RF:** soporte transversal para RF-01 a RF-13.
   - **Hecho cuando:** existe aprobación explícita para instalar únicamente las dependencias enumeradas en el plan.
 
-- [ ] **T002 — Preparar la estructura modular del backend**
+- [x] **T002 — Preparar la estructura modular del backend**
   - **RF:** soporte transversal para RF-01 a RF-13.
   - **Hecho cuando:** los límites de dominio, casos de uso, entrada web e infraestructura existen y el dominio no importa FastAPI, PostgreSQL ni proveedores.
 
-- [ ] **T003 — Preparar la estructura del frontend público y administrativo**
+- [x] **T003 — Preparar la estructura del frontend público y administrativo**
   - **RF:** soporte transversal para RF-01 a RF-12.
   - **Hecho cuando:** React distingue áreas pública y administrativa y produce una compilación servible por la misma aplicación.
 
-- [ ] **T004 — Configurar pytest para dominio e integración**
+- [x] **T004 — Configurar pytest para dominio e integración**
   - **RF:** soporte transversal para RF-01 a RF-13.
-  - **Hecho cuando:** pytest ejecuta pruebas mínimas de dominio y PostgreSQL sin usar datos personales reales.
+  - **Hecho cuando:** pytest ejecuta una prueba mínima de la frontera del dominio y reconoce separadamente las suites unitarias y de integración; la primera prueba contra PostgreSQL real se ejecutará obligatoriamente en T007.
 
-- [ ] **T004A — Configurar Playwright para pruebas web**
+- [x] **T004A — Configurar Playwright para pruebas web**
   - **RF:** soporte transversal para RF-01 a RF-12.
   - **Hecho cuando:** Playwright abre la aplicación de prueba y completa una comprobación mínima con datos ficticios.
 
-- [ ] **T004B — Configurar la matriz adaptable y Axe**
+- [x] **T004B — Configurar la matriz adaptable y Axe**
   - **RF:** soporte transversal para RF-01 a RF-12; RNF-06.
-  - **Hecho cuando:** la configuración compartida ejecuta Playwright en Chromium, Firefox y WebKit a 320, 390, 768 y 1280 píxeles CSS e integra Axe sin incluirlo en el artefacto de producción.
+  - **Hecho cuando:** la configuración compartida ejecuta Playwright en Chromium y WebKit a 320, 390, 768 y 1280 píxeles CSS e integra Axe sin incluirlo en el artefacto de producción.
 
-- [ ] **T005 — Configurar variables externas y sanitización básica**
+- [x] **T005 — Configurar variables externas y sanitización básica**
   - **RF:** soporte transversal para RF-03 a RF-13.
   - **Hecho cuando:** secretos y conexiones se leen fuera del código y una verificación confirma que no se versionan `.env`, claves ni tokens.
 
-- [ ] **T006 — Crear reloj y generador de secretos sustituibles**
+- [x] **T006 — Crear reloj y generador de secretos sustituibles**
   - **RF:** RF-03, RF-05, RF-06, RF-07, RF-09, RF-11, RF-12 y RF-13.
   - **Hecho cuando:** dominio y pruebas pueden controlar el instante actual y la generación criptográfica sin depender del reloj real.
 
-- [ ] **T007 — Configurar PostgreSQL real para integración**
+- [x] **T007 — Configurar PostgreSQL real para integración**
   - **RF:** soporte transversal para RF-01 a RF-13.
   - **Hecho cuando:** una prueba abre una transacción en PostgreSQL, la revierte y deja la base de pruebas limpia.
 
 ## 2. Esquema e integridad persistente
 
-- [ ] **T008 — Migrar servicios y versiones del aviso**
+- [x] **T008 — Migrar servicios y versiones del aviso**
   - **RF:** RF-01, RF-03 y RF-13.
   - **Hecho cuando:** la migración crea ambas entidades con sus campos, relaciones y restricciones básicas aprobadas.
 
-- [ ] **T009 — Migrar citas e instantáneas del servicio**
+- [x] **T009 — Migrar citas e instantáneas del servicio**
   - **RF:** RF-03, RF-05, RF-06, RF-07, RF-08, RF-09 y RF-13.
   - **Hecho cuando:** la cita persiste contacto, consentimiento, agenda, estado e instantánea sin depender de valores futuros del servicio.
 
-- [ ] **T010 — Migrar referencias secretas de confirmación**
+- [x] **T010 — Migrar referencias secretas de confirmación**
   - **RF:** RF-03 y RF-04.
   - **Hecho cuando:** la referencia tiene huella única, vencimiento, consumo y relación opcional con una única cita confirmada.
 
-- [ ] **T011 — Migrar entregas de notificación**
+- [x] **T011 — Migrar entregas de notificación**
   - **RF:** RF-04 y RF-12.
   - **Hecho cuando:** cada evento registra por separado correo y WhatsApp sin guardar el código ni contactos completos en diagnósticos.
 
-- [ ] **T011A — Migrar la programación durable de recordatorios**
+- [x] **T011A — Migrar la programación durable de recordatorios**
   - **RF:** RF-04-CA-14 a RF-04-CA-25.
   - **Hecho cuando:** PostgreSQL conserva vencimiento, horario, estado y arrendamiento recuperable con un recordatorio único por cita y horario y una entrega única por recordatorio y canal, y permite invalidar u omitir sin eliminar el historial mínimo de entregas.
 
-- [ ] **T012 — Migrar bloqueos y guardia de agenda**
+- [x] **T012 — Migrar bloqueos y guardia de agenda**
   - **RF:** RF-02, RF-03, RF-06, RF-10 y RF-11.
   - **Hecho cuando:** existen bloqueos globales o por sucursal y una única fila de guardia utilizable dentro de transacciones.
 
-- [ ] **T013 — Migrar estadísticas mensuales disociadas**
+- [x] **T013 — Migrar estadísticas mensuales disociadas**
   - **RF:** RF-13.
   - **Hecho cuando:** la clave impide duplicar un conteo para mes, servicio, sucursal y estado.
 
-- [ ] **T014 — Migrar eventos mínimos de protección pública**
+- [x] **T014 — Migrar eventos mínimos de protección pública**
   - **RF:** RF-05.
   - **Hecho cuando:** pueden guardarse categoría, instante, resultado y huella con clave sin persistir IP o credencial en texto plano.
 
-- [ ] **T015 — Verificar restricciones y reversibilidad de migraciones**
+- [x] **T015 — Verificar restricciones y reversibilidad de migraciones**
   - **RF:** RF-01 a RF-13 según las entidades afectadas.
   - **Hecho cuando:** las migraciones suben y bajan en una base limpia y PostgreSQL rechaza los estados estructuralmente inválidos definidos en el plan.
 
 ## 3. Catálogo de servicios
 
-- [ ] **T016 — Validar nombre y descripción de servicio**
+- [x] **T016 — Validar nombre y descripción de servicio**
   - **RF:** RF-01.
   - **Hecho cuando:** pruebas cubren espacios externos, Unicode visible, controles, nombre vacío y límites de 1, 100 y 250 caracteres.
 
-- [ ] **T017 — Validar duración del servicio**
+- [x] **T017 — Validar duración del servicio**
   - **RF:** RF-01.
   - **Hecho cuando:** solo pasan múltiplos de 5 entre 5 y 600 minutos y las pruebas cubren sus vecinos inválidos.
 
-- [ ] **T018 — Validar precio y sucursales del servicio**
+- [x] **T018 — Validar precio y sucursales del servicio**
   - **RF:** RF-01.
   - **Hecho cuando:** se aceptan 0.01–20,000.00 MXN con dos decimales y al menos una de las dos sucursales, rechazando los bordes inválidos.
 
-- [ ] **T019 — Proteger la unicidad canónica del nombre**
+- [x] **T019 — Proteger la unicidad canónica del nombre**
   - **RF:** RF-01.
   - **Hecho cuando:** dominio y PostgreSQL rechazan duplicados ignorando mayúsculas, minúsculas y espacios externos.
 
-- [ ] **T020 — Implementar creación interna de servicios**
+- [x] **T020 — Implementar creación interna de servicios**
   - **RF:** RF-01.
   - **Hecho cuando:** el caso de uso crea un servicio válido y no expone todavía una operación pública administrativa.
 
-- [ ] **T020A — Implementar edición interna de servicios**
+- [x] **T020A — Implementar edición interna de servicios**
   - **RF:** RF-01.
   - **Hecho cuando:** el caso de uso actualiza únicamente los campos aprobados y vuelve a aplicar todas sus validaciones.
 
-- [ ] **T021 — Implementar activación y desactivación interna**
+- [x] **T021 — Implementar activación y desactivación interna**
   - **RF:** RF-01.
   - **Hecho cuando:** un servicio cambia de estado sin eliminarse y las citas existentes conservan su instantánea.
 
-- [ ] **T022 — Publicar catálogo activo por sucursal**
+- [x] **T022 — Publicar catálogo activo por sucursal**
   - **RF:** RF-01 y RF-03.
   - **Hecho cuando:** el contrato público devuelve solamente servicios activos disponibles en la sucursal elegida.
 
 ## 4. Dominio temporal y disponibilidad
 
-- [ ] **T023 — Modelar instantes en la zona oficial**
+- [x] **T023 — Modelar instantes en la zona oficial**
   - **RF:** RF-02, RF-03, RF-06, RF-07, RF-09, RF-10, RF-11 y RF-13.
   - **Hecho cuando:** pruebas convierten y comparan instantes con `America/Mexico_City` sin fechas locales ambiguas.
 
-- [ ] **T024 — Generar la cuadrícula diaria de inicios**
+- [x] **T024 — Generar la cuadrícula diaria de inicios**
   - **RF:** RF-02.
   - **Hecho cuando:** solo se generan intervalos de 15 minutos entre 09:00 y 19:00, incluyendo ambos extremos.
 
-- [ ] **T025 — Permitir comida y finalización posterior a las 19:00**
+- [x] **T025 — Permitir comida y finalización posterior a las 19:00**
   - **RF:** RF-02.
   - **Hecho cuando:** pruebas aceptan citas durante 13:00–14:00 y una cita iniciada a las 19:00 que termina después.
 
-- [ ] **T026 — Implementar intervalos semiabiertos**
+- [x] **T026 — Implementar intervalos semiabiertos**
   - **RF:** RF-02 y RF-10.
   - **Hecho cuando:** el inicio está ocupado, el final exacto está libre y los bordes con bloqueos pasan las pruebas.
 
-- [ ] **T027 — Detectar superposición con el profesional único**
+- [x] **T027 — Detectar superposición con el profesional único**
   - **RF:** RF-02.
   - **Hecho cuando:** una cita incompatible en cualquier sucursal impide otra atención simultánea en ambas.
 
-- [ ] **T028 — Aplicar separación de 5 minutos en la misma sucursal**
+- [x] **T028 — Aplicar separación de 5 minutos en la misma sucursal**
   - **RF:** RF-02.
   - **Hecho cuando:** las pruebas rechazan una separación menor y aceptan el primer inicio de 15 minutos igual o posterior al mínimo.
 
-- [ ] **T029 — Aplicar separación de 25 minutos entre sucursales**
+- [x] **T029 — Aplicar separación de 25 minutos entre sucursales**
   - **RF:** RF-02.
   - **Hecho cuando:** las pruebas rechazan una separación menor y aceptan el primer inicio de 15 minutos igual o posterior al traslado y tolerancia.
 
-- [ ] **T030 — Evaluar vecinos anterior y posterior**
+- [x] **T030 — Evaluar vecinos anterior y posterior**
   - **RF:** RF-02 y RF-06.
   - **Hecho cuando:** una cita insertada o movida respeta la separación necesaria respecto de las citas de ambos lados.
 
-- [ ] **T031 — Resolver citas que atraviesan medianoche**
+- [x] **T031 — Resolver citas que atraviesan medianoche**
   - **RF:** RF-02.
   - **Hecho cuando:** una cita conserva la ocupación y separación posterior aunque su final pertenezca al día siguiente.
 
-- [ ] **T032 — Excluir estados finales de la ocupación futura**
+- [x] **T032 — Excluir estados finales de la ocupación futura**
   - **RF:** RF-02, RF-07 y RF-09.
   - **Hecho cuando:** cancelada, completada, no asistió y resultado no registrado no bloquean horarios futuros.
 
-- [ ] **T033 — Validar anticipación pública y horizonte**
+- [x] **T033 — Validar anticipación pública y horizonte**
   - **RF:** RF-03 y RF-06.
   - **Hecho cuando:** pruebas aceptan exactamente 60 minutos y 90 periodos de 24 horas y rechazan un instante fuera de cada límite.
 
-- [ ] **T034 — Validar inicio administrativo inmediato**
+- [x] **T034 — Validar inicio administrativo inmediato**
   - **RF:** RF-03 y RF-06.
   - **Hecho cuando:** el primer intervalo administrativo no es anterior al momento actual y mantiene cuadrícula, horizonte y disponibilidad.
 
-- [ ] **T035 — Aplicar actividad y sucursal del servicio al candidato**
+- [x] **T035 — Aplicar actividad y sucursal del servicio al candidato**
   - **RF:** RF-01, RF-02, RF-03 y RF-06.
   - **Hecho cuando:** una reservación o reprogramación rechaza servicios inactivos o no disponibles en la sucursal.
 
-- [ ] **T036 — Calcular hasta tres alternativas del mismo día**
+- [x] **T036 — Calcular hasta tres alternativas del mismo día**
   - **RF:** RF-11.
   - **Hecho cuando:** se devuelven como máximo tres opciones válidas ordenadas por distancia absoluta.
 
-- [ ] **T037 — Resolver empates y ausencia de alternativas**
+- [x] **T037 — Resolver empates y ausencia de alternativas**
   - **RF:** RF-11.
   - **Hecho cuando:** un empate prioriza el horario posterior y un día sin opciones solicita elegir otra fecha.
 
-- [ ] **T038 — Separar horario inválido de horario ocupado**
+- [x] **T038 — Separar horario inválido de horario ocupado**
   - **RF:** RF-11.
   - **Hecho cuando:** formato, jornada, cuadrícula, anticipación u horizonte inválidos producen su error sin calcular alternativas.
 
-- [ ] **T039 — Serializar una creación concurrente de agenda**
+- [x] **T039 — Serializar una creación concurrente de agenda**
   - **RF:** RF-02 y RF-03.
   - **Hecho cuando:** una prueba con PostgreSQL confirma solo una de dos reservaciones simultáneas incompatibles y no deja cambios parciales.
 
-- [ ] **T040 — Serializar movimientos y cambios de servicio**
+- [x] **T040 — Serializar movimientos y cambios de servicio**
   - **RF:** RF-01, RF-02 y RF-06.
   - **Hecho cuando:** pruebas concurrentes conservan una agenda válida al mover citas o modificar la vigencia de un servicio.
 
-- [ ] **T041 — Exponer consulta pública de disponibilidad**
+- [x] **T041 — Exponer consulta pública de disponibilidad**
   - **RF:** RF-02.
   - **Hecho cuando:** el contrato devuelve los inicios válidos para sucursal, servicio y fecha con errores sanitizados.
 
 ## 5. Creación pública de citas
 
-- [ ] **T042 — Validar nombre y apellido de la adulta responsable**
+- [x] **T042 — Validar nombre y apellido de la adulta responsable**
   - **RF:** RF-03.
   - **Hecho cuando:** pruebas cubren 1–100 caracteres, Unicode, espacios internos, apóstrofos, guiones y caracteres rechazados.
 
-- [ ] **T043 — Normalizar el teléfono mexicano**
+- [x] **T043 — Normalizar el teléfono mexicano**
   - **RF:** RF-03.
   - **Hecho cuando:** todos los formatos permitidos producen 10 dígitos y se rechazan otros prefijos, extensiones, letras o longitudes.
 
-- [ ] **T044 — Validar y normalizar el correo obligatorio**
+- [x] **T044 — Validar y normalizar el correo obligatorio**
   - **RF:** RF-03.
   - **Hecho cuando:** los formatos y límites exactos de la spec cuentan con pruebas válidas e inválidas.
 
-- [ ] **T045 — Registrar consentimiento y versión del aviso**
+- [x] **T045 — Registrar consentimiento y versión del aviso**
   - **RF:** RF-03 y RF-13.
   - **Hecho cuando:** la cita conserva versión, instante, origen, autorización de contacto y declaración de persona adulta responsable; si el origen es administrativo, conserva también la cuenta responsable.
 
-- [ ] **T046 — Proteger la inmutabilidad de versiones del aviso**
+- [x] **T046 — Proteger la inmutabilidad de versiones del aviso**
   - **RF:** RF-03 y RF-13.
   - **Hecho cuando:** una versión aceptada no puede editarse ni eliminarse mientras una cita la referencie.
 
-- [ ] **T047 — Generar código privado y huella de búsqueda**
+- [x] **T047 — Generar código privado y huella de búsqueda**
   - **RF:** RF-03, RF-05 y RF-12.
   - **Hecho cuando:** el código tiene al menos 128 bits, es opaco, único y no contiene datos personales; la búsqueda usa su huella.
 
-- [ ] **T048 — Cifrar el código para su reenvío posterior**
+- [x] **T048 — Cifrar el código para su reenvío posterior**
   - **RF:** RF-03 y RF-12.
   - **Hecho cuando:** puede recuperarse únicamente con la clave externa autorizada y ni base, índices ni logs contienen el código en claro.
 
-- [ ] **T049 — Emitir una referencia secreta de confirmación**
+- [x] **T049 — Emitir una referencia secreta de confirmación**
   - **RF:** RF-03.
   - **Hecho cuando:** se devuelve una referencia sin datos personales, de al menos 128 bits y con vencimiento exacto a 24 horas.
 
-- [ ] **T050 — Rechazar referencias ausentes o vencidas**
+- [x] **T050 — Rechazar referencias ausentes o vencidas**
   - **RF:** RF-03.
   - **Hecho cuando:** no se crea ni recupera una cita al faltar la referencia o al alcanzarse exactamente su vencimiento.
 
-- [ ] **T051 — Crear el agregado de cita programada**
+- [x] **T051 — Crear el agregado de cita programada**
   - **RF:** RF-01 y RF-03.
   - **Hecho cuando:** una cita válida conserva contacto, sucursal, horario e instantánea vigente de nombre, duración y precio.
 
-- [ ] **T052 — Confirmar cita y entregas en una transacción**
+- [x] **T052 — Confirmar cita y entregas en una transacción**
   - **RF:** RF-02, RF-03 y RF-04.
   - **Hecho cuando:** cita y dos entregas pendientes se confirman juntas después de revalidar agenda y servicio bajo la guardia.
 
-- [ ] **T053 — Hacer idempotente el reintento de confirmación**
+- [x] **T053 — Hacer idempotente el reintento de confirmación**
   - **RF:** RF-03 y RF-04.
   - **Hecho cuando:** repetir la misma referencia devuelve cita, código y resultados originales sin crear ni enviar nuevamente.
 
-- [ ] **T054 — Proteger la idempotencia concurrente**
+- [x] **T054 — Proteger la idempotencia concurrente**
   - **RF:** RF-03 y RF-04.
   - **Hecho cuando:** dos confirmaciones simultáneas con la misma referencia devuelven el mismo resultado y crean como máximo una cita.
 
-- [ ] **T055 — Exponer emisión pública de referencia**
+- [x] **T055 — Exponer emisión pública de referencia**
   - **RF:** RF-03.
   - **Hecho cuando:** el contrato genera una referencia secreta y distingue vencimiento y límite sin exponer datos internos.
 
-- [ ] **T055A — Exponer confirmación pública de cita**
+- [x] **T055A — Exponer confirmación pública de cita**
   - **RF:** RF-03, RF-04 y RF-11.
   - **Hecho cuando:** el contrato acepta solo los campos aprobados y distingue validación, conflicto, referencia y límite.
 
-- [ ] **T056 — Construir selección pública de sucursal y servicio**
+- [x] **T056 — Construir selección pública de sucursal y servicio**
   - **RF:** RF-01 y RF-03.
   - **Hecho cuando:** la clienta elige valores de listas activas y no puede escribir libremente el servicio.
 
-- [ ] **T057 — Construir selección pública de fecha y horario**
+- [x] **T057 — Construir selección pública de fecha y horario**
   - **RF:** RF-02, RF-03 y RF-11.
   - **Hecho cuando:** la pantalla muestra disponibilidad o alternativas del mismo día y explica en español los horarios inválidos.
 
-- [ ] **T058 — Construir datos personales y consentimiento público**
+- [x] **T058 — Construir datos personales y consentimiento público**
   - **RF:** RF-03.
   - **Hecho cuando:** todos los datos obligatorios y las tres confirmaciones de privacidad y responsabilidad se validan antes del envío.
 
-- [ ] **T059 — Construir la confirmación pública única**
+- [x] **T059 — Construir la confirmación pública única**
   - **RF:** RF-03 y RF-04.
   - **Hecho cuando:** la pantalla posterior a crear o reintentar muestra una sola cita, su resumen, código y estado de cada canal.
 
-- [ ] **T060 — Verificar el recorrido público de creación**
+- [x] **T060 — Verificar el recorrido público de creación**
   - **RF:** RF-01, RF-02, RF-03, RF-04 y RF-11.
   - **Hecho cuando:** Playwright reserva con datos ficticios y comprueba código, resumen y aislamiento respecto de otras citas.
 
+- [x] **T060A — Alinear visualmente el flujo público de reserva**
+  - **RF:** RF-01, RF-02, RF-03 y RF-04; **RNF-06**.
+  - **Hecho cuando:** los pasos Tu cita, Tus datos, Confirmar y el estado final reutilizan el comportamiento existente y reflejan la composición, jerarquía, tarjetas, paneles y adaptación móvil aprobadas, sin añadir requisitos de negocio.
+
 ## 6. Consulta pública y protección contra abuso
 
-- [ ] **T061 — Consultar exclusivamente por huella de código**
+- [x] **T061 — Consultar exclusivamente por huella de código**
   - **RF:** RF-05.
   - **Hecho cuando:** un código válido devuelve únicamente su cita y no existe búsqueda pública por datos personales.
 
-- [ ] **T062 — Enmascarar teléfono y correo**
+- [x] **T062 — Enmascarar teléfono y correo**
   - **RF:** RF-05.
   - **Hecho cuando:** las pruebas reproducen exactamente los formatos ocultos definidos, incluidos correos con una sola letra.
 
-- [ ] **T063 — Aplicar vigencia pública de 30 días**
+- [x] **T063 — Aplicar vigencia pública de 30 días**
   - **RF:** RF-05 y RF-13.
   - **Hecho cuando:** cualquier estado es consultable hasta las 23:59:59 del límite y deja de serlo a las 00:00 siguientes.
 
-- [ ] **T064 — Uniformar errores de credenciales públicas**
+- [x] **T064 — Uniformar errores de credenciales públicas**
   - **RF:** RF-05, RF-06 y RF-07.
   - **Hecho cuando:** código inexistente, mal formado, vencido o combinado con teléfono incorrecto producen una respuesta indistinguible.
 
-- [ ] **T065 — Contar fallos móviles de credenciales**
+- [x] **T065 — Contar fallos móviles de credenciales**
   - **RF:** RF-05.
   - **Hecho cuando:** el quinto fallo en 15 minutos bloquea la IP y un éxito no borra fallos todavía vigentes.
 
-- [ ] **T066 — Aplicar y vencer el bloqueo de credenciales**
+- [x] **T066 — Aplicar y vencer el bloqueo de credenciales**
   - **RF:** RF-05.
   - **Hecho cuando:** solicitudes bloqueadas no prolongan ni incrementan el bloqueo y otras IP o administración siguen disponibles.
 
-- [ ] **T067 — Limitar catálogo y disponibilidad a 60 por minuto**
+- [x] **T067 — Limitar catálogo y disponibilidad a 60 por minuto**
   - **RF:** RF-01, RF-02 y RF-05.
   - **Hecho cuando:** la solicitud 60 se acepta, la 61 se rechaza y los rechazos no amplían la ventana móvil.
 
-- [ ] **T068 — Limitar operaciones públicas de cita a 10 por 15 minutos**
+- [x] **T068 — Limitar operaciones públicas de cita a 10 por 15 minutos**
   - **RF:** RF-03, RF-05, RF-06 y RF-07.
   - **Hecho cuando:** la operación 10 se acepta, la 11 se rechaza antes de consultar o modificar datos y no amplía la ventana.
 
-- [ ] **T069 — Combinar límites sin reducir la denegación**
+- [x] **T069 — Combinar límites sin reducir la denegación**
   - **RF:** RF-05.
   - **Hecho cuando:** al coincidir límite general y bloqueo de credenciales se aplica el vencimiento que mantenga el acceso denegado más tiempo.
 
-- [ ] **T070 — Exponer consulta pública sin secretos en URL**
+- [x] **T070 — Exponer consulta pública sin secretos en URL**
   - **RF:** RF-05.
   - **Hecho cuando:** el código viaja únicamente en el cuerpo, la respuesta está sanitizada y ningún log o URL lo contiene.
 
-- [ ] **T071 — Construir la pantalla pública de consulta**
+- [x] **T071 — Construir la pantalla pública de consulta**
   - **RF:** RF-05.
   - **Hecho cuando:** muestra el resumen y contactos ocultos de una sola cita y presenta acciones solo cuando están permitidas.
 
-- [ ] **T072 — Verificar aislamiento público entre citas**
+- [x] **T072 — Verificar aislamiento público entre citas**
   - **RF:** RF-05.
   - **Hecho cuando:** pruebas de contrato cubren otras citas, respuestas genéricas y ausencia de secretos.
 
-- [ ] **T072A — Verificar límites públicos bajo concurrencia**
+- [x] **T072A — Verificar límites públicos bajo concurrencia**
   - **RF:** RF-05.
   - **Hecho cuando:** pruebas concurrentes cubren los bordes de cada ventana y confirman que los rechazos no las amplían.
 
 ## 7. Modificación y cancelación públicas
 
-- [ ] **T073 — Autorizar modificación pública por código y teléfono**
+- [x] **T073 — Autorizar modificación pública por código y teléfono**
   - **RF:** RF-06.
   - **Hecho cuando:** solo una cita programada con credenciales correctas y al menos 60 minutos restantes puede continuar.
 
-- [ ] **T074 — Restringir campos de modificación pública**
+- [x] **T074 — Restringir campos de modificación pública**
   - **RF:** RF-06.
   - **Hecho cuando:** solo fecha, horario, sucursal o servicio se aceptan y cualquier cambio de contacto o nombre se rechaza.
 
-- [ ] **T075 — Revalidar una reprogramación pública**
+- [x] **T075 — Revalidar una reprogramación pública**
   - **RF:** RF-01, RF-02, RF-06 y RF-11.
   - **Hecho cuando:** se excluye la cita actual, se revalida agenda, servicio, anticipación y horizonte, y se conservan cambios en forma atómica.
 
-- [ ] **T076 — Aplicar instantáneas al modificar**
+- [x] **T076 — Aplicar instantáneas al modificar**
   - **RF:** RF-01 y RF-06.
   - **Hecho cuando:** fecha, hora o sucursal conservan precio; cambiar servicio actualiza duración y precio vigentes sin cambiar el código.
 
-- [ ] **T077 — Exponer modificación pública y alternativas**
+- [x] **T077 — Exponer modificación pública y alternativas**
   - **RF:** RF-04, RF-06 y RF-11.
   - **Hecho cuando:** el contrato devuelve cita modificada o error genérico/conflicto con alternativas sin volver a mostrar el código.
 
-- [ ] **T078 — Construir la pantalla pública de modificación**
+- [x] **T078 — Construir la pantalla pública de modificación**
   - **RF:** RF-06 y RF-11.
   - **Hecho cuando:** solo ofrece campos permitidos y muestra en español éxito, límites o alternativas.
 
-- [ ] **T079 — Validar motivo opcional de cancelación**
+- [x] **T079 — Validar motivo opcional de cancelación**
   - **RF:** RF-07.
   - **Hecho cuando:** se aceptan hasta 250 caracteres Unicode visibles, se retiran espacios y vacío equivale a ausencia.
 
-- [ ] **T080 — Cancelar públicamente de forma atómica**
+- [x] **T080 — Cancelar públicamente de forma atómica**
   - **RF:** RF-02 y RF-07.
   - **Hecho cuando:** credenciales y límite temporal válidos cambian a cancelada, conservan la cita y liberan disponibilidad sin cambios parciales.
 
-- [ ] **T081 — Exponer cancelación pública**
+- [x] **T081 — Exponer cancelación pública**
   - **RF:** RF-04 y RF-07.
   - **Hecho cuando:** el contrato acepta exactamente una hora antes, rechaza un instante después y nunca revela el motivo ni el código.
 
-- [ ] **T082 — Construir confirmación pública de cancelación**
+- [x] **T082 — Construir confirmación pública de cancelación**
   - **RF:** RF-04 y RF-07.
   - **Hecho cuando:** la pantalla confirma estado y canales sin volver a mostrar el código privado.
 
-- [ ] **T083 — Verificar estados finales en cambios públicos**
+- [x] **T083 — Verificar estados finales en cambios públicos**
   - **RF:** RF-06 y RF-07.
   - **Hecho cuando:** pruebas impiden modificar, cancelar o reactivar cualquier cita con estado final.
 
 ## 8. Notificaciones transaccionales y recordatorios simulados
 
-- [ ] **T084 — Definir puertos y resultados por canal**
+- [x] **T084 — Definir puertos y resultados por canal**
   - **RF:** RF-04 y RF-12.
   - **Hecho cuando:** correo y WhatsApp comparten un resultado controlado de éxito o fallo sin que el dominio dependa del proveedor.
 
-- [ ] **T084A — Modelar estados de una entrega**
+- [x] **T084A — Modelar estados de una entrega**
   - **RF:** RF-04 y RF-12.
   - **Hecho cuando:** solo se permiten transiciones válidas entre pendiente, aceptada por el proveedor, entregada y fallida.
 
-- [ ] **T085 — Preparar plantilla de creación**
+- [x] **T085 — Preparar plantilla de creación**
   - **RF:** RF-04.
   - **Hecho cuando:** ambos canales reciben servicio, fecha, hora, sucursal, duración, estado, precio y código.
 
-- [ ] **T086 — Preparar plantillas de modificación y cancelación**
+- [x] **T086 — Preparar plantillas de modificación y cancelación**
   - **RF:** RF-04, RF-06 y RF-07.
   - **Hecho cuando:** ambos mensajes contienen el resumen aprobado y no revelan nuevamente el código.
 
-- [ ] **T086A — Preparar el mensaje separado por corrección de contacto**
+- [x] **T086A — Preparar el mensaje separado por corrección de contacto**
   - **RF:** RF-04 y RF-06.
   - **Hecho cuando:** el mensaje dirigido al teléfono o correo nuevo contiene el mismo código sin incorporarlo a la confirmación ordinaria de modificación.
 
-- [ ] **T087 — Implementar simulador de correo**
+- [x] **T087 — Implementar simulador de correo**
   - **RF:** RF-04 y RF-12.
   - **Hecho cuando:** las pruebas controlan éxito o fallo y registran el resultado sin realizar envíos reales.
 
-- [ ] **T088 — Implementar simulador de WhatsApp**
+- [x] **T088 — Implementar simulador de WhatsApp**
   - **RF:** RF-04 y RF-12.
   - **Hecho cuando:** las pruebas controlan éxito, teléfono sin WhatsApp o fallo y registran el resultado sin envíos reales.
 
-- [ ] **T089 — Despachar canales independientemente tras el commit**
+- [x] **T089 — Despachar canales independientemente tras el commit**
   - **RF:** RF-04.
   - **Hecho cuando:** cada aceptación o fallo inmediato conserva la operación principal y registra ambos resultados sanitizados sin afirmar entrega.
 
-- [ ] **T089A — Procesar confirmaciones y fallos tardíos**
+- [x] **T089A — Procesar confirmaciones y fallos tardíos**
   - **RF:** RF-04 y RF-12.
   - **Hecho cuando:** una actualización auténtica del proveedor cambia la entrega correspondiente sin modificar la cita ni otra entrega.
 
-- [ ] **T090 — Conectar notificaciones de creación**
+- [x] **T090 — Conectar notificaciones de creación**
   - **RF:** RF-03 y RF-04.
   - **Hecho cuando:** crear una cita inicia exactamente un intento por canal después del commit.
 
-- [ ] **T091 — Conectar notificaciones de modificación y cancelación**
+- [x] **T091 — Conectar notificaciones de modificación y cancelación**
   - **RF:** RF-04, RF-06 y RF-07.
   - **Hecho cuando:** cada cambio confirmado inicia un intento por canal y un fallo no revierte cita ni estado.
 
-- [ ] **T092 — Verificar que un reintento no renotifica**
+- [x] **T092 — Verificar que un reintento no renotifica**
   - **RF:** RF-03 y RF-04.
   - **Hecho cuando:** repetir una confirmación devuelve resultados originales incluso si fallaron, sin nuevos intentos.
 
-- [ ] **T093 — Mostrar fallos parciales sin detalles internos**
+- [x] **T093 — Mostrar fallos parciales sin detalles internos**
   - **RF:** RF-04.
   - **Hecho cuando:** contratos y pantallas identifican el canal fallido sin exponer proveedor, credenciales o trazas.
 
-- [ ] **T093A — Preparar el reintento interno de una entrega fallida**
+- [x] **T093A — Preparar el reintento interno de una entrega fallida**
   - **RF:** RF-04.
   - **Hecho cuando:** el caso de uso crea un intento enlazado y auditable al contacto vigente sin alterar la cita ni generar otro código.
 
-- [ ] **T093B — Decidir la elegibilidad inicial del recordatorio**
+- [x] **T093B — Decidir la elegibilidad inicial del recordatorio**
   - **RF:** RF-04-CA-14 y RF-04-CA-16.
   - **Hecho cuando:** una cita pública o administrativa con más de 24 horas programa un único recordatorio a las 24 horas previas y una con exactamente 24 horas o menos no lo programa.
 
-- [ ] **T093C — Sustituir o invalidar recordatorios al cambiar la cita**
+- [x] **T093C — Sustituir o invalidar recordatorios al cambiar la cita**
   - **RF:** RF-04-CA-15, RF-04-CA-16 y RF-04-CA-20.
   - **Hecho cuando:** reprogramar invalida el pendiente anterior y crea como máximo el nuevo elegible, mientras cancelar impide el pendiente sin cambios parciales.
 
-- [ ] **T093D — Preparar la plantilla segura del recordatorio**
+- [x] **T093D — Preparar la plantilla segura del recordatorio**
   - **RF:** RF-04-CA-17 y RF-04-CA-18.
   - **Hecho cuando:** correo y WhatsApp usan los contactos vigentes e incluyen solo servicio, fecha, horario, sucursal, duración y precio, sin código ni enlace que permita recuperarlo.
 
-- [ ] **T093E — Reclamar y procesar recordatorios vencidos**
+- [x] **T093E — Reclamar y procesar recordatorios vencidos**
   - **RF:** RF-04-CA-17, RF-04-CA-19 y RF-04-CA-24.
   - **Hecho cuando:** procesos concurrentes reclaman una sola vez cada recordatorio, recuperan una reclamación abandonada antes del inicio registrado, procesan un vencido con más de 60 minutos restantes y omiten definitivamente uno con 60 minutos o menos.
 
-- [ ] **T093F — Resolver cambios concurrentes y resultados por canal**
+- [x] **T093F — Resolver cambios concurrentes y resultados por canal**
   - **RF:** RF-04-CA-20 a RF-04-CA-22 y RF-04-CA-25.
   - **Hecho cuando:** una transacción breve registra el inicio antes de contactar al proveedor, los cambios confirmados antes lo impiden, los posteriores conservan el posible envío y generan su notificación ordinaria, y ningún resultado modifica la cita.
 
-- [ ] **T093G — Restringir reintentos manuales de recordatorios**
+- [x] **T093G — Restringir reintentos manuales de recordatorios**
   - **RF:** RF-04-CA-22 a RF-04-CA-25; integración con RF-10-CA-02 y límites de la spec 002.
   - **Hecho cuando:** propietario o personal reintentan solo el canal fallido, al contacto vigente, más de 60 minutos antes, hasta tres veces, separados por cinco minutos y consumiendo el límite administrativo una vez por solicitud.
 
-- [ ] **T093H — Probar recordatorios con PostgreSQL y concurrencia**
+- [x] **T093H — Probar recordatorios con PostgreSQL y concurrencia**
   - **RF:** RF-04-CA-14 a RF-04-CA-25.
   - **Hecho cuando:** pruebas con reloj controlado cubren ambos orígenes, bordes de 24 horas y 60 minutos, reinicio, reprogramación, cancelación, fallos independientes, reintentos y procesos simultáneos sin duplicados.
 
 ## 9. Puerta y operaciones administrativas
 
-- [ ] **T094 — Aprobar el plan de la spec 002 y disponer de su frontera de autorización**
+- [x] **T094 — Aprobar el plan de la spec 002 y disponer de su frontera de autorización**
   - **RF:** puerta para RF-01, RF-03, RF-06, RF-07, RF-08, RF-09, RF-10 y RF-12.
   - **Hecho cuando:** el plan 002 está aprobado y las pruebas pueden representar propietario, personal, no autenticado y no autorizado.
 
@@ -809,7 +813,7 @@
 
 - [ ] **T148B — Comprobar citas en celulares reales y navegadores objetivo**
   - **RF:** RF-01 a RF-12 como interfaz; RNF-06.
-  - **Hecho cuando:** existe evidencia manual satisfactoria del portal público y la administración de citas en al menos un Android y un iPhone reales, y se registró la comprobación de Chrome Android, Safari iPhone y Chrome, Edge y Firefox de escritorio conforme a la matriz vigente.
+  - **Hecho cuando:** existe evidencia manual satisfactoria del portal público y la administración de citas en al menos un Android y un iPhone reales, y se registró la comprobación de Chrome Android, Safari iPhone y Chrome y Edge de escritorio conforme a la matriz vigente.
 
 - [ ] **T149 — Cerrar la matriz de trazabilidad**
   - **RF:** RF-01 a RF-13.

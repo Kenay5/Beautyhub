@@ -1,0 +1,1 @@
+"""BeautyHub backend package."""

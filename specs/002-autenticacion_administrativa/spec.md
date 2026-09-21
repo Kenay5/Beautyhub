@@ -1,6 +1,6 @@
 # Especificación 002 — Autenticación y autorización administrativa
 
-**Estado:** Activa; aprobada explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda no funcional RNF-05 aprobada explícitamente el 10 de septiembre de 2026.
+**Estado:** Activa; aprobada explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda no funcional RNF-05 aprobada explícitamente el 10 de septiembre de 2026; ajuste de compatibilidad del MVP aprobado explícitamente el 12 de septiembre de 2026.
 
 ## Contexto y objetivo
 
@@ -303,7 +303,7 @@ Como administrador, quiero recibir avisos cuando ocurra un cambio o bloqueo rele
 - El texto debe ser legible sin obligar a ampliar la página; el sistema no debe impedir el zoom del navegador y los controles deben poder utilizarse cómodamente mediante una pantalla táctil.
 - Cada campo debe tener una etiqueta explícita y cada error debe mostrarse cerca del campo correspondiente y estar asociado con él para tecnologías de asistencia.
 - Todas las funciones deben poder operarse con teclado, el foco debe ser perceptible, la estructura y los nombres accesibles deben permitir navegación básica con lector de pantalla y ningún significado debe depender únicamente del color.
-- La compatibilidad objetivo comprende Chrome en Android, Safari en iPhone y Chrome, Edge y Firefox de escritorio en su versión estable vigente y la versión principal inmediatamente anterior al momento de publicar.
+- La compatibilidad objetivo comprende Chrome en Android, Safari en iPhone y Chrome y Edge de escritorio, cada uno en su versión estable vigente y la versión principal inmediatamente anterior al momento de publicar. Firefox queda fuera de la matriz de compatibilidad del MVP y su funcionamiento no está garantizado.
 - Los recorridos principales deben superar comprobaciones automatizadas de adaptabilidad y accesibilidad en tamaños representativos desde 320 píxeles CSS. Antes de publicar, la autenticación y administración deben superar además una comprobación manual en al menos un dispositivo Android y un iPhone reales.
 
 ## Casos límite

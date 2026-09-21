@@ -1,6 +1,6 @@
 # Tareas — 002 Autenticación y autorización administrativa
 
-**Estado:** aprobadas explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda de tareas para RNF-05 aprobada explícitamente el 10 de septiembre de 2026; listas para ejecución conforme a la spec y al plan aprobados.
+**Estado:** aprobadas explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda de tareas para RNF-05 aprobada explícitamente el 10 de septiembre de 2026; ajuste de compatibilidad del MVP aprobado explícitamente el 12 de septiembre de 2026; listas para ejecución conforme a la spec y al plan aprobados.
 
 **Fuentes:** `specs/002-autenticacion_administrativa/spec.md`, `specs/002-autenticacion_administrativa/plan.md` y las fronteras aprobadas de `specs/001-manita_gato/`.  
 **Regla de ejecución:** avanzar en orden. Cada tarea representa aproximadamente 20–30 minutos; si durante la implementación excede ese tamaño, deberá dividirse sin ampliar el alcance. Las puertas de aprobación y publicación son comprobaciones, no estimaciones técnicas.  
@@ -17,173 +17,173 @@
 
 ## 1. Puertas y base técnica
 
-- [ ] **T001 — Obtener autorización para instalar dependencias**
+- [x] **T001 — Obtener autorización para instalar dependencias**
   - **RF/criterios:** soporte de RF-03, RF-05 y RF-07; RF-05-CA-06 y RF-07-CA-01.
   - **Hecho cuando:** existe aprobación explícita para las cuatro dependencias nuevas y las ya aprobadas en el plan 001, sin instalar ninguna adicional.
 
-- [ ] **T002 — Verificar dependencias y lista comprometida**
+- [x] **T002 — Verificar dependencias y lista comprometida**
   - **RF/criterios:** RF-05-CA-06; RF-07-CA-01, CA-14 y CA-24.
-  - **Hecho cuando:** versiones, compatibilidad, licencias, fuente oficial, 100,000 huellas, fecha, checksum y revisión máxima de 90 días quedan registrados.
+  - **Hecho cuando:** versiones, compatibilidad, licencias, fuente oficial, 1,000 huellas, fecha, checksum y revisión máxima de 90 días quedan registrados.
 
-- [ ] **T003 — Preparar fronteras y suites administrativas**
+- [x] **T003 — Preparar fronteras y suites administrativas**
   - **RF/criterios:** soporte transversal de RF-01 a RF-12.
   - **Hecho cuando:** dominio, aplicación, web, infraestructura, React y las suites unitarias, PostgreSQL, contrato, seguridad, concurrencia y Playwright tienen límites explícitos.
 
-- [ ] **T004 — Reutilizar reloj controlable y zona oficial**
+- [x] **T004 — Reutilizar reloj controlable y zona oficial**
   - **RF/criterios:** RF-01-CA-07; RF-02-CA-01; RF-03-CA-03; RF-04-CA-03 y CA-04; RF-06-CA-02; RF-07-CA-14; RF-08-CA-02; RF-11-CA-06 y CA-07.
   - **Hecho cuando:** dominio y pruebas controlan el instante y calculan todos los plazos con `America/Mexico_City`.
 
-- [ ] **T005 — Configurar claves externas y separación criptográfica**
+- [x] **T005 — Configurar claves externas y separación criptográfica**
   - **RF/criterios:** RF-01-CA-13; RF-02-CA-07; RF-05-CA-04; RF-07-CA-13 y CA-24; RNF-01.
   - **Hecho cuando:** una clave raíz versionada se carga solo desde secretos externos, deriva subclaves por propósito y su ausencia impide arrancar de forma segura.
 
-- [ ] **T006 — Centralizar errores y logs sanitizados**
+- [x] **T006 — Centralizar errores y logs sanitizados**
   - **RF/criterios:** RF-03-CA-08; RF-11-CA-02; RF-12-CA-06 y CA-09; RNF-01.
   - **Hecho cuando:** errores y logs en inglés no contienen contraseñas, códigos, tokens, correos completos, datos de clientas ni detalles internos.
 
-- [ ] **T007 — Preparar el simulador del proveedor de correo**
+- [x] **T007 — Preparar el simulador del proveedor de correo**
   - **RF/criterios:** RF-02-CA-09; RF-12-CA-07 a CA-10.
   - **Hecho cuando:** pruebas simulan aceptación, rechazo, incertidumbre y fallo tardío sin red, secretos ni datos personales reales.
 
-- [ ] **T008 — Establecer verificaciones ejecutables de la spec 002**
+- [x] **T008 — Establecer verificaciones ejecutables de la spec 002**
   - **RF/criterios:** soporte transversal de RF-01 a RF-12 y RNF-01 a RNF-05.
   - **Hecho cuando:** cada grupo de pruebas tiene un comando documentado y ningún comando exige secretos incorporados al repositorio.
 
 ## 2. PostgreSQL e invariantes
 
-- [ ] **T009 — Persistir cuentas y configuración inicial única**
+- [x] **T009 — Persistir cuentas y configuración inicial única**
   - **RF/criterios:** RF-01-CA-01, CA-03 a CA-05, CA-09, CA-11 y CA-12; RF-09-CA-01 a CA-06.
   - **Hecho cuando:** roles, estados y bootstrap irreversible permiten como máximo un propietario y una cuenta de personal pendiente o activa, sin credenciales predeterminadas.
 
-- [ ] **T010 — Persistir reclamaciones y reservas de correo**
+- [x] **T010 — Persistir reclamaciones y reservas de correo**
   - **RF/criterios:** RF-01-CA-02 y CA-14 a CA-16; RF-08-CA-02, CA-03, CA-07 y CA-08.
   - **Hecho cuando:** correo vigente y reservado usan huella única y valor cifrado, con máximo una reserva por cuenta.
 
-- [ ] **T011 — Persistir enlaces y configuraciones pendientes**
+- [x] **T011 — Persistir enlaces y configuraciones pendientes**
   - **RF/criterios:** RF-01-CA-07 a CA-12; RF-02-CA-01 y CA-04; RF-06-CA-02, CA-04 y CA-10; RF-07-CA-07 a CA-10 y CA-23; RF-08-CA-02, CA-05 y CA-07.
   - **Hecho cuando:** propósito, huella, plazos, estado y configuración pendiente permiten un solo enlace vigente por cuenta y propósito.
 
-- [ ] **T012 — Persistir TOTP, periodos y códigos de recuperación**
+- [x] **T012 — Persistir TOTP, periodos y códigos de recuperación**
   - **RF/criterios:** RF-03-CA-12; RF-07-CA-01 a CA-05, CA-10 y CA-13 a CA-23.
   - **Hecho cuando:** existe máximo un factor activo, periodos y códigos se consumen una sola vez y ningún secreto queda recuperable salvo el TOTP cifrado autorizado.
 
-- [ ] **T013 — Persistir sesiones administrativas**
+- [x] **T013 — Persistir sesiones administrativas**
   - **RF/criterios:** RF-03-CA-07; RF-04-CA-01 a CA-08.
   - **Hecho cuando:** cada sesión guarda solo huellas, cuenta, creación, actividad humana, expiración absoluta, CSRF e invalidación, con máximo una activa por cuenta.
 
-- [ ] **T014 — Persistir fallos y bloqueos de cuenta**
+- [x] **T014 — Persistir fallos y bloqueos de cuenta**
   - **RF/criterios:** RF-03-CA-03 a CA-12; RF-06-CA-09, CA-12 y CA-13.
   - **Hecho cuando:** eventos mínimos, `lock_until` y restricción posterior a recuperación se actualizan bajo bloqueo de fila y sin guardar credenciales.
 
-- [ ] **T015 — Persistir límites móviles y guardias concurrentes**
+- [x] **T015 — Persistir límites móviles y guardias concurrentes**
   - **RF/criterios:** RNF-01 y RNF-02; apoyo de RF-03, RF-06, RF-07 y RF-10.
   - **Hecho cuando:** categoría, sujeto con huella, solicitud e instante permiten serializar cada límite sin almacenar IP legible.
 
-- [ ] **T016 — Persistir historial administrativo**
+- [x] **T016 — Persistir historial administrativo**
   - **RF/criterios:** RF-09-CA-02 y CA-03; RF-11-CA-01 a CA-08.
   - **Hecho cuando:** cada evento admite actor opcional, acción, resultado, instante y referencia interna mínima sin datos privados copiados.
 
-- [ ] **T017 — Persistir entregas idempotentes de seguridad**
+- [x] **T017 — Persistir entregas idempotentes de seguridad**
   - **RF/criterios:** RF-02-CA-09; RF-12-CA-01 a CA-10.
   - **Hecho cuando:** destinatario cifrado temporal, plantilla, clave idempotente, estado y error sanitizado se guardan sin secreto o enlace completo.
 
-- [ ] **T018 — Aplicar restricciones y estados válidos**
+- [x] **T018 — Aplicar restricciones y estados válidos**
   - **RF/criterios:** RF-01-CA-03 a CA-05 y CA-11; RF-03-CA-08; RF-11-CA-02 y CA-05; RNF-02 y RNF-03.
   - **Hecho cuando:** PostgreSQL rechaza duplicados, transiciones inválidas, relaciones rotas y campos prohibidos aun bajo concurrencia.
 
-- [ ] **T019 — Verificar migraciones desde cero y desde la spec 001**
+- [x] **T019 — Verificar migraciones desde cero y desde la spec 001**
   - **RF/criterios:** soporte de RF-01 a RF-12; RNF-02.
   - **Hecho cuando:** migraciones suben y bajan en bases de prueba nuevas y existentes sin modificar datos ni reglas de citas.
 
-- [ ] **T020 — Probar invariantes concurrentes en PostgreSQL**
+- [x] **T020 — Probar invariantes concurrentes en PostgreSQL**
   - **RF/criterios:** RF-01-CA-03, CA-04, CA-11, CA-15 y CA-16; RF-04-CA-02; RF-07-CA-15 y CA-20; RF-08-CA-08; RNF-02.
   - **Hecho cuando:** carreras reales permiten un solo propietario, personal, correo, activación, sesión o consumo incompatible.
 
 ## 3. Validación y primitivas de seguridad
 
-- [ ] **T021 — Validar y normalizar correos administrativos**
+- [x] **T021 — Validar y normalizar correos administrativos**
   - **RF/criterios:** RF-01-CA-02.
   - **Hecho cuando:** pruebas cubren caracteres, segmentos, puntos, espacios, longitudes y comparación sin mayúsculas definidos en la spec.
 
-- [ ] **T022 — Validar contraseñas y lista comprometida**
+- [x] **T022 — Validar contraseñas y lista comprometida**
   - **RF/criterios:** RF-05-CA-01, CA-03, CA-06 y CA-07.
   - **Hecho cuando:** se aplican solo longitud, espacios y bloqueo local aprobados, y una lista ausente, corrupta o vencida falla de forma segura.
 
-- [ ] **T023 — Crear y verificar huellas Argon2id**
+- [x] **T023 — Crear y verificar huellas Argon2id**
   - **RF/criterios:** RF-03-CA-01 y CA-02; RF-05-CA-04; RF-06-CA-03.
   - **Hecho cuando:** salts distintos verifican, solo se persiste la huella, ninguna contraseña puede recuperarse o mostrarse, las huellas antiguas se fortalecen tras éxito y cuentas inexistentes ejecutan trabajo señuelo acotado.
 
-- [ ] **T024 — Cifrar valores y crear huellas por propósito**
+- [x] **T024 — Cifrar valores y crear huellas por propósito**
   - **RF/criterios:** RF-01-CA-13; RF-02-CA-07; RF-03-CA-08; RF-07-CA-13, CA-20 y CA-24; RF-12-CA-06.
   - **Hecho cuando:** TOTP y correo usan cifrado autenticado; enlaces, sesiones, recuperación, correo normalizado e IP usan huellas no reversibles separadas.
 
-- [ ] **T025 — Generar y comprobar TOTP estándar**
+- [x] **T025 — Generar y comprobar TOTP estándar**
   - **RF/criterios:** RF-03-CA-12; RF-07-CA-01, CA-14, CA-15 y CA-17.
   - **Hecho cuando:** seis dígitos cada 30 segundos aceptan solo periodos anterior, actual y siguiente, un periodo consumido no repite éxito y ningún TOTP se envía por correo, SMS o WhatsApp.
 
-- [ ] **T026 — Generar y comprobar códigos de recuperación**
+- [x] **T026 — Generar y comprobar códigos de recuperación**
   - **RF/criterios:** RF-03-CA-12; RF-07-CA-02, CA-03, CA-16 y CA-20.
   - **Hecho cuando:** se crean diez códigos únicos de 16 caracteres, se normalizan exactamente como la spec y solo se consumen tras éxito completo.
 
-- [ ] **T027 — Implementar el ciclo común de enlaces temporales**
+- [x] **T027 — Implementar el ciclo común de enlaces temporales**
   - **RF/criterios:** RF-01-CA-07, CA-09 a CA-12; RF-02-CA-01, CA-04 y CA-06; RF-06-CA-02, CA-04 y CA-10; RF-07-CA-07, CA-08 y CA-23; RF-08-CA-02, CA-05 y CA-07.
   - **Hecho cuando:** emisión, sustitución, vencimiento exacto y consumo atómico respetan propósito y plazo sin dejar estado parcial.
 
-- [ ] **T028 — Proteger tokens, QR y navegación del navegador**
+- [x] **T028 — Proteger tokens, QR y navegación del navegador**
   - **RF/criterios:** RF-02-CA-05; RF-07-CA-24; RF-12-CA-06; RNF-01.
   - **Hecho cuando:** tokens opacos de 256 bits viajan en fragmento y cuerpo, el QR se genera localmente y deja de consultarse al salir del flujo, y URL, `Referer`, historial y almacenamiento web quedan limpios.
 
-- [ ] **T029 — Invalidar estados pendientes de forma coherente**
+- [x] **T029 — Invalidar estados pendientes de forma coherente**
   - **RF/criterios:** RF-01-CA-10; RF-04-CA-08; RF-07-CA-08 y CA-23; RF-08-CA-05 y CA-07.
   - **Hecho cuando:** abandono, vencimiento, sustitución o invalidación descartan solo lo pendiente y conservan cuenta, correo, factor y credenciales vigentes.
 
-- [ ] **T030 — Ejecutar pruebas unitarias de las primitivas**
+- [x] **T030 — Ejecutar pruebas unitarias de las primitivas**
   - **RF/criterios:** RF-01-CA-02, CA-07 y CA-13; RF-03-CA-02 y CA-12; RF-05; RF-07-CA-13 a CA-17, CA-20 y CA-24; RNF-01.
   - **Hecho cuando:** reloj, aleatoriedad, normalización, Argon2id, lista, cifrado, huellas, TOTP, códigos y enlaces pasan con bordes controlados.
 
 ## 4. Propietario e invitación del personal
 
-- [ ] **T031 — Registrar el correo del propietario por proceso protegido**
+- [x] **T031 — Registrar el correo del propietario por proceso protegido**
   - **RF/criterios:** RF-01-CA-01 a CA-03 y CA-13 a CA-16.
   - **Hecho cuando:** el comando autorizado solicita el correo sin argumento de shell y crea atómicamente una sola cuenta propietaria inactiva.
 
-- [ ] **T032 — Emitir y reemitir el enlace inicial**
+- [x] **T032 — Emitir y reemitir el enlace inicial**
   - **RF/criterios:** RF-01-CA-07 y CA-09; RF-12-CA-07 a CA-09.
   - **Hecho cuando:** existe como máximo un enlace opaco de 30 minutos y un fallo conserva la cuenta inactiva y permite otro enlace distinto.
 
-- [ ] **T033 — Preparar la activación inicial sin consumir el enlace**
+- [x] **T033 — Preparar la activación inicial sin consumir el enlace**
   - **RF/criterios:** RF-01-CA-08 y CA-10; RF-05; RF-07-CA-01, CA-02 y CA-24.
   - **Hecho cuando:** solo un enlace vigente permite preparar contraseña y TOTP sin activar la cuenta ni conservar secretos al abandonar.
 
-- [ ] **T034 — Activar al propietario de forma atómica**
+- [x] **T034 — Activar al propietario de forma atómica**
   - **RF/criterios:** RF-01-CA-08, CA-10 a CA-12; RF-07-CA-02, CA-16 y CA-23; RNF-02.
   - **Hecho cuando:** contraseña, factor, diez códigos, enlace consumido y bootstrap cerrado se confirman juntos, sin sesión y con un solo ganador concurrente.
 
-- [ ] **T035 — Autorizar y crear una invitación de personal**
+- [x] **T035 — Autorizar y crear una invitación de personal**
   - **RF/criterios:** RF-01-CA-04, CA-06, CA-14 a CA-16; RF-02-CA-01, CA-03 y CA-07; RF-10-CA-01 y CA-04.
   - **Hecho cuando:** solo el propietario reclama un correo disponible y deja exactamente una cuenta pendiente sin acceso.
 
-- [ ] **T036 — Conservar la invitación pendiente ante fallo de entrega**
+- [x] **T036 — Conservar la invitación pendiente ante fallo de entrega**
   - **RF/criterios:** RF-02-CA-03 y CA-09; RF-12-CA-07 a CA-09.
   - **Hecho cuando:** el enlace fallido no funciona, la cuenta sigue pendiente y el propietario puede reenviar o cancelar tras un error sanitizado.
 
-- [ ] **T037 — Reenviar o cancelar una invitación pendiente**
+- [x] **T037 — Reenviar o cancelar una invitación pendiente**
   - **RF/criterios:** RF-01-CA-05; RF-02-CA-04, CA-06, CA-08 y CA-09.
   - **Hecho cuando:** reenviar sustituye el enlace por otro de 24 horas y cancelar invalida enlace, cuenta pendiente y reclamación.
 
-- [ ] **T038 — Activar al personal con credenciales propias**
+- [x] **T038 — Activar al personal con credenciales propias**
   - **RF/criterios:** RF-01-CA-15; RF-02-CA-02 a CA-04 y CA-07; RF-07-CA-01, CA-02 y CA-16.
   - **Hecho cuando:** el titular confirma contraseña, TOTP y diez códigos sin que el propietario conozca secretos y sin crear una sesión.
 
-- [ ] **T039 — Uniformar invitaciones inválidas o vencidas**
+- [x] **T039 — Uniformar invitaciones inválidas o vencidas**
   - **RF/criterios:** RF-02-CA-04 y CA-05.
   - **Hecho cuando:** enlace inválido, usado, cancelado, sustituido o vencido muestra el mismo mensaje y no revela estado interno.
 
-- [ ] **T040 — Probar altas e invitaciones concurrentes**
+- [x] **T040 — Probar altas e invitaciones concurrentes**
   - **RF/criterios:** RF-01-CA-03, CA-04, CA-11, CA-15 y CA-16; RF-02-CA-03 y CA-04; RNF-02.
   - **Hecho cuando:** PostgreSQL permite una sola combinación válida ante dobles altas, invitaciones, correos o activaciones.
 
-- [ ] **T041 — Verificar la activación del propietario con Playwright**
+- [x] **T041 — Verificar la activación del propietario con Playwright**
   - **RF/criterios:** RF-01-CA-01, CA-07 a CA-13; RF-05; RF-07-CA-01, CA-02, CA-16 y CA-24.
   - **Hecho cuando:** datos ficticios recorren registro protegido, activación, códigos de una sola vista y cierre irreversible con mensajes en español.
 
@@ -193,39 +193,39 @@
 
 ## 5. Login y sesiones
 
-- [ ] **T043 — Validar login y uniformar errores**
+- [x] **T043 — Validar login y uniformar errores**
   - **RF/criterios:** RF-03-CA-01, CA-02 y CA-12.
   - **Hecho cuando:** se exige correo, contraseña y exactamente un segundo factor, y toda cuenta o credencial inválida recibe un resultado indistinguible.
 
-- [ ] **T044 — Consumir el segundo factor solo al completar el login**
+- [x] **T044 — Consumir el segundo factor solo al completar el login**
   - **RF/criterios:** RF-03-CA-08 y CA-12; RF-07-CA-03, CA-15 y CA-20.
   - **Hecho cuando:** una solicitud rechazada cuenta una sola falla y conserva el factor; el éxito consume una sola vez y no registra secretos.
 
-- [ ] **T045 — Contar fallos y bloquear en el quinto**
+- [x] **T045 — Contar fallos y bloquear en el quinto**
   - **RF/criterios:** RF-03-CA-03 y CA-08; RF-12-CA-02 y CA-03.
   - **Hecho cuando:** el quinto fallo dentro de 15 minutos fija exactamente 15 minutos de bloqueo, audita y prepara los avisos exigidos.
 
-- [ ] **T046 — Mantener y vencer el bloqueo correctamente**
+- [x] **T046 — Mantener y vencer el bloqueo correctamente**
   - **RF/criterios:** RF-03-CA-04 a CA-06 y CA-10.
   - **Hecho cuando:** durante el bloqueo se niegan login y operaciones sensibles sin verificar credenciales ni mover el plazo, una sesión abierta conserva operaciones ordinarias autorizadas y al vencer comienza una ventana nueva.
 
-- [ ] **T047 — Crear login correcto y sustituir la sesión previa**
+- [x] **T047 — Crear login correcto y sustituir la sesión previa**
   - **RF/criterios:** RF-03-CA-07 y CA-09; RF-04-CA-02; RNF-02.
   - **Hecho cuando:** se limpian fallos, se crea sesión del rol real y dos logins concurrentes dejan exactamente una sesión activa.
 
-- [ ] **T048 — Emitir cookie y token CSRF protegidos**
+- [x] **T048 — Emitir cookie y token CSRF protegidos**
   - **RF/criterios:** RF-04-CA-01; RNF-01.
   - **Hecho cuando:** cookie `__Host-` aplica `Secure`, `HttpOnly`, `SameSite=Strict`, ruta `/` y sin `Domain`, y CSRF distinto se guarda como huella.
 
-- [ ] **T049 — Validar CSRF y origen en mutaciones**
+- [x] **T049 — Validar CSRF y origen en mutaciones**
   - **RF/criterios:** RF-04-CA-07; RF-10-CA-05; RNF-01.
   - **Hecho cuando:** CSRF ausente o distinto y origen no permitido reciben 403 antes de cualquier efecto.
 
-- [ ] **T050 — Aplicar expiración por inactividad y máxima**
+- [x] **T050 — Aplicar expiración por inactividad y máxima**
   - **RF/criterios:** RF-04-CA-03 y CA-04.
   - **Hecho cuando:** actividad humana prolonga solo la ventana de 30 minutos y ninguna actividad supera las ocho horas absolutas.
 
-- [ ] **T051 — Cerrar sesión de forma idempotente**
+- [x] **T051 — Cerrar sesión de forma idempotente**
   - **RF/criterios:** RF-04-CA-05; RF-11-CA-01.
   - **Hecho cuando:** sesión y cookie quedan invalidadas, repetir no revive estado y el cierre se registra sin secretos.
 
@@ -451,7 +451,7 @@
 
 - [ ] **T104A — Verificar adaptabilidad y accesibilidad de autenticación**
   - **RF/criterios:** RF-01 a RF-08; RNF-05.
-  - **Hecho cuando:** activación, inicio y cierre de sesión, recuperación, contraseña, TOTP, códigos y cambio de correo funcionan con teclado en Chromium, Firefox y WebKit a 320, 390, 768 y 1280 píxeles CSS, sin pérdida ni desplazamiento general y sin infracciones de Axe.
+  - **Hecho cuando:** activación, inicio y cierre de sesión, recuperación, contraseña, TOTP, códigos y cambio de correo funcionan con teclado en Chromium y WebKit a 320, 390, 768 y 1280 píxeles CSS, sin pérdida ni desplazamiento general y sin infracciones de Axe.
 
 - [ ] **T104B — Verificar adaptabilidad y accesibilidad administrativa**
   - **RF/criterios:** RF-09 a RF-12 y la integración autorizada con la spec 001; RNF-05.

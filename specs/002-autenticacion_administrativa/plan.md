@@ -1,6 +1,6 @@
 # Plan de implementación — 002 Autenticación y autorización administrativa
 
-**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda técnica para RNF-05 aprobada explícitamente el 10 de septiembre de 2026.
+**Estado:** aprobado explícitamente por el responsable del proyecto el 9 de septiembre de 2026; enmienda técnica para RNF-05 aprobada explícitamente el 10 de septiembre de 2026; ajuste de compatibilidad del MVP aprobado explícitamente el 12 de septiembre de 2026.
 
 **Spec cubierta:** `specs/002-autenticacion_administrativa/spec.md`, activa y aprobada.  
 **Dependencia funcional:** `specs/001-manita_gato/spec.md`, sin redefinir sus reglas de citas.  
@@ -218,7 +218,7 @@ La activación no crea una sesión: el propietario inicia sesión posteriormente
 
 ### 8.2 Lista local versionada
 
-- La fuente será el corpus oficial descargable de [Pwned Passwords de Have I Been Pwned](https://haveibeenpwned.com/API/V3#PwnedPasswords), usado sin consultas de red en tiempo de ejecución. El artefacto contendrá las huellas SHA-1 en mayúsculas de las 100,000 entradas con mayor conteo de exposición; SHA-1 solo identifica miembros de esa lista y nunca protege credenciales almacenadas.
+- La fuente será el corpus oficial descargable de [Pwned Passwords de Have I Been Pwned](https://haveibeenpwned.com/API/V3#PwnedPasswords), usado sin consultas de red en tiempo de ejecución. El artefacto contendrá las huellas SHA-1 en mayúsculas de las 1,000 entradas con mayor conteo de exposición; SHA-1 solo identifica miembros de esa lista y nunca protege credenciales almacenadas.
 - Los metadatos registrarán fuente, fecha de la instantánea, fecha de obtención, número de entradas y checksum; no contendrán contraseñas legibles ni relaciones con correos o identidades.
 - La versión deberá revisarse antes del primer despliegue y cada 90 días; una versión más reciente reemplazará atómicamente a la anterior.
 - Si el archivo falta, está corrupto o venció su revisión, crear, cambiar o restablecer contraseñas fallará de forma segura; el inicio de sesión con huellas ya creadas seguirá disponible.
@@ -522,7 +522,7 @@ Las operaciones administrativas de la spec 001 usan la misma cookie, CSRF y pol�
 
 ### DT-04. Lista local versionada
 
-**Decisión:** 100,000 huellas frecuentes, metadatos y revisión cada 90 días.  
+**Decisión:** 1,000 huellas frecuentes, metadatos y revisión cada 90 días.
 **Justificación:** cumple la lista vigente sin dependencia de red durante una operación sensible.  
 **Alternativa descartada:** consulta remota en cada cambio o una lista legible incluida en el repositorio.  
 **Cobertura:** RF-05-CA-06.
@@ -594,7 +594,7 @@ Las operaciones administrativas de la spec 001 usan la misma cookie, CSRF y pol�
 
 **Decisión:** reutilizar la base de presentación de DT-12 del plan 001: HTML semántico, composición fluida, foco visible, operación por teclado, etiquetas y errores asociados, zoom permitido, estados independientes del color y controles táctiles con área operable objetivo de al menos 44 por 44 píxeles CSS salvo enlaces integrados en texto. Los flujos se verificarán al menos a 320, 390, 768 y 1280 píxeles CSS. Las tablas de agenda o historial solo podrán desplazarse horizontalmente dentro de su contenedor cuando sea indispensable y deberán mantener accesibles sus encabezados y acciones.
 
-**Justificación:** la autenticación y las tareas del negocio deben poder completarse desde un celular sin crear una interfaz distinta ni trasladar autorización al navegador. La misma configuración compartida de Playwright y `@axe-core/playwright` verifica Chromium, Firefox y WebKit sin añadir una quinta dependencia específica de seguridad ni código de prueba al artefacto de producción.
+**Justificación:** la autenticación y las tareas del negocio deben poder completarse desde un celular sin crear una interfaz distinta ni trasladar autorización al navegador. La misma configuración compartida de Playwright y `@axe-core/playwright` verifica Chromium y WebKit sin añadir una quinta dependencia específica de seguridad ni código de prueba al artefacto de producción.
 
 **Alternativa descartada:** una aplicación administrativa exclusiva de escritorio, una versión móvil separada o pruebas únicamente manuales, porque perderían funciones en celulares, duplicarían mantenimiento o no detectarían regresiones de forma repetible.
 
@@ -689,7 +689,7 @@ No se añaden Redis, JWT, OAuth, Celery, un KMS externo ni una API de contraseñ
 - códigos mostrados una vez, sesión reemplazada y expiraciones exactas con reloj controlado;
 - propietario consulta filtros del historial; personal y no autenticada reciben denegación;
 - navegación y sondeos demuestran qué actividad reinicia o no el límite de inactividad.
-- activación, inicio de sesión, recuperación, configuración de factores, gestión del personal e historial se recorren en Chromium, Firefox y WebKit a tamaños representativos desde 320 píxeles CSS, sin desplazamiento horizontal general, contenido perdido ni controles superpuestos;
+- activación, inicio de sesión, recuperación, configuración de factores, gestión del personal e historial se recorren en Chromium y WebKit a tamaños representativos desde 320 píxeles CSS, sin desplazamiento horizontal general, contenido perdido ni controles superpuestos;
 - los estados principales no presentan infracciones de Axe y conservan operación por teclado, foco visible, etiquetas y errores asociados, zoom y significado independiente del color.
 
 **Cobertura:** RF-01 a RF-12 y RNF-05, sin usar Playwright como única prueba de una regla crítica.
