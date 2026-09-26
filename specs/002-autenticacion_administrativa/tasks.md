@@ -187,7 +187,7 @@
   - **RF/criterios:** RF-01-CA-01, CA-07 a CA-13; RF-05; RF-07-CA-01, CA-02, CA-16 y CA-24.
   - **Hecho cuando:** datos ficticios recorren registro protegido, activación, códigos de una sola vista y cierre irreversible con mensajes en español.
 
-- [ ] **T042 — Verificar la invitación del personal con Playwright**
+- [x] **T042 — Verificar la invitación del personal con Playwright**
   - **RF/criterios:** RF-02-CA-01 a CA-09; RF-07-CA-01, CA-02, CA-16 y CA-24.
   - **Hecho cuando:** propietario invita y el personal activa; reenvío, cancelación, vencimiento y fallo de entrega producen los resultados aprobados.
 
@@ -229,117 +229,117 @@
   - **RF/criterios:** RF-04-CA-05; RF-11-CA-01.
   - **Hecho cuando:** sesión y cookie quedan invalidadas, repetir no revive estado y el cierre se registra sin secretos.
 
-- [ ] **T052 — Invalidar sesiones y temporales al cambiar seguridad**
+- [x] **T052 — Invalidar sesiones y temporales al cambiar seguridad**
   - **RF/criterios:** RF-04-CA-06 y CA-08.
   - **Hecho cuando:** cambiar contraseña, correo, TOTP o códigos cierra sesiones e invalida enlaces y configuraciones incompatibles.
 
-- [ ] **T053 — Revalidar sesión y cuenta en cada solicitud**
+- [x] **T053 — Revalidar sesión y cuenta en cada solicitud**
   - **RF/criterios:** RF-04-CA-07; RF-09-CA-01.
   - **Hecho cuando:** sesión inexistente, vencida o invalidada y cuenta no activa no producen contexto administrativo ni filtran su estado.
 
-- [ ] **T054 — Aplicar cabeceras y estado seguro en React**
+- [x] **T054 — Aplicar cabeceras y estado seguro en React**
   - **RF/criterios:** RF-03-CA-08; RF-04-CA-03 a CA-07; RF-12-CA-06; RNF-01.
   - **Hecho cuando:** respuestas usan las cabeceras aprobadas y React reacciona en español sin almacenar credenciales ni decidir autorización.
 
-- [ ] **T055 — Probar login, bloqueo, sesiones y CSRF**
+- [x] **T055 — Probar login, bloqueo, sesiones y CSRF**
   - **RF/criterios:** RF-03-CA-01 a CA-12; RF-04-CA-01 a CA-08; RF-10-CA-05; RNF-01 y RNF-02.
   - **Hecho cuando:** pruebas unitarias, PostgreSQL, contrato y seguridad cubren errores genéricos, tiempos exactos, sustitución, cookie, CSRF e invalidación.
 
-- [ ] **T056 — Verificar login y sesión con Playwright**
+- [x] **T056 — Verificar login y sesión con Playwright**
   - **RF/criterios:** RF-03 y RF-04.
   - **Hecho cuando:** navegador recorre éxito, quinto fallo, bloqueo, actividad, ambos vencimientos, nueva sesión y cierre con mensajes en español.
 
 ## 6. Contraseña, factores y correo propio
 
-- [ ] **T057 — Cambiar la contraseña desde una sesión**
+- [x] **T057 — Cambiar la contraseña desde una sesión**
   - **RF/criterios:** RF-03-CA-03, CA-08 y CA-12; RF-05-CA-02, CA-05, CA-07 y CA-08.
   - **Hecho cuando:** contraseña actual, TOTP y nueva válida cambian atómicamente, cierran sesiones, invalidan temporales, auditan y avisan; formularios aceptan pegado/autocompletado y cualquier fallo conserva credenciales.
 
-- [ ] **T058 — Solicitar recuperación con respuesta genérica**
+- [x] **T058 — Solicitar recuperación con respuesta genérica**
   - **RF/criterios:** RF-06-CA-01.
   - **Hecho cuando:** cualquier correo válido recibe el mismo 202 y solo una cuenta activa puede originar una intención interna.
 
-- [ ] **T059 — Emitir y entregar el enlace de recuperación**
+- [x] **T059 — Emitir y entregar el enlace de recuperación**
   - **RF/criterios:** RF-06-CA-02 y CA-04; RF-12-CA-07 a CA-09.
   - **Hecho cuando:** existe máximo un enlace vigente de 30 minutos y un fallo lo invalida sin revelar la cuenta.
 
-- [ ] **T060 — Completar recuperación sin iniciar sesión**
+- [x] **T060 — Completar recuperación sin iniciar sesión**
   - **RF/criterios:** RF-06-CA-03 a CA-05.
   - **Hecho cuando:** contraseña válida sustituye la anterior, consume el enlace, cierra sesiones, audita y confirma sin crear sesión.
 
-- [ ] **T061 — Conservar bloqueo y permitir recuperación**
+- [x] **T061 — Conservar bloqueo y permitir recuperación**
   - **RF/criterios:** RF-03-CA-11; RF-06-CA-08 y CA-09.
   - **Hecho cuando:** solicitar y terminar recuperación no elimina fallos ni modifica `lock_until`.
 
-- [ ] **T062 — Forzar recuperación del personal como propietario**
+- [x] **T062 — Forzar recuperación del personal como propietario**
   - **RF/criterios:** RF-06-CA-06 y CA-07; RF-10-CA-01 y CA-04.
   - **Hecho cuando:** solo el propietario cierra sesiones y envía el enlace sin elegir, ver o recuperar la contraseña del personal.
 
-- [ ] **T063 — Resolver fallo, vencimiento o repetición de recuperación forzada**
+- [x] **T063 — Resolver fallo, vencimiento o repetición de recuperación forzada**
   - **RF/criterios:** RF-06-CA-10 y CA-11; RF-12-CA-10.
   - **Hecho cuando:** la contraseña previa permanece inutilizable y cada fallo, vencimiento u orden nueva invalida el enlace anterior; el propietario puede emitir otro distinto con 30 minutos completos.
 
-- [ ] **T064 — Aplicar la restricción posterior a recuperación**
+- [x] **T064 — Aplicar la restricción posterior a recuperación**
   - **RF/criterios:** RF-06-CA-12 y CA-13; RF-07-CA-19.
   - **Hecho cuando:** se niega reemplazo perdido tras recuperar y solo un login completo con el factor anterior retira la restricción.
 
-- [ ] **T065 — Usar y mostrar códigos de recuperación**
+- [x] **T065 — Usar y mostrar códigos de recuperación**
   - **RF/criterios:** RF-03-CA-12; RF-07-CA-02, CA-03, CA-16 y CA-20.
   - **Hecho cuando:** el lote se muestra una vez, un código correcto se consume al final y uno incorrecto conserva todos y cuenta una falla.
 
-- [ ] **T066 — Regenerar códigos desde una sesión**
+- [x] **T066 — Regenerar códigos desde una sesión**
   - **RF/criterios:** RF-07-CA-04, CA-21 y CA-22; RF-04-CA-06 y CA-08.
   - **Hecho cuando:** contraseña y TOTP sustituyen el lote completo, cierran sesiones y avisan; cualquier fallo cuenta una sola vez y conserva el lote anterior.
 
-- [ ] **T067 — Iniciar reemplazo de TOTP desde sesión**
+- [x] **T067 — Iniciar reemplazo de TOTP desde sesión**
   - **RF/criterios:** RF-07-CA-05 y CA-23.
   - **Hecho cuando:** contraseña y TOTP o recuperación válidos preparan el factor nuevo sin cambiar el anterior, sus códigos o sesiones ni consumir la credencial comprobada.
 
-- [ ] **T068 — Confirmar reemplazo de TOTP desde sesión**
+- [x] **T068 — Confirmar reemplazo de TOTP desde sesión**
   - **RF/criterios:** RF-07-CA-10, CA-11 y CA-15; RF-04-CA-06 y CA-08.
   - **Hecho cuando:** factor y lote nuevos sustituyen los anteriores, la credencial previa se consume condicionalmente y sesiones se cierran en un resultado atómico.
 
-- [ ] **T069 — Solicitar reemplazo de factor perdido**
+- [x] **T069 — Solicitar reemplazo de factor perdido**
   - **RF/criterios:** RF-07-CA-06, CA-07 y CA-18.
   - **Hecho cuando:** la respuesta es siempre genérica y solo correo, contraseña, cuenta activa no bloqueada y sin restricción originan como máximo un enlace vigente de 30 minutos.
 
-- [ ] **T070 — Completar reemplazo perdido de forma segura**
+- [x] **T070 — Completar reemplazo perdido de forma segura**
   - **RF/criterios:** RF-07-CA-08 a CA-11 y CA-23.
   - **Hecho cuando:** el factor anterior permanece activo hasta la confirmación atómica del nuevo y el flujo no concede sesión.
 
-- [ ] **T071 — Impedir toda omisión del segundo factor**
+- [x] **T071 — Impedir toda omisión del segundo factor**
   - **RF/criterios:** RF-07-CA-12 y CA-19; RF-06-CA-12.
   - **Hecho cuando:** sin contraseña, TOTP y códigos no existe recuperación automática ni administrativa, y una respuesta pública no revela el motivo.
 
-- [ ] **T072 — Solicitar cambio del correo propio**
+- [x] **T072 — Solicitar cambio del correo propio**
   - **RF/criterios:** RF-01-CA-02; RF-08-CA-01, CA-02 y CA-06.
   - **Hecho cuando:** contraseña y TOTP permiten reservar un correo normalizado disponible sin cambiar el correo vigente ni otra cuenta.
 
-- [ ] **T073 — Emitir y sustituir confirmaciones de correo**
+- [x] **T073 — Emitir y sustituir confirmaciones de correo**
   - **RF/criterios:** RF-01-CA-14 a CA-16; RF-08-CA-02 y CA-07.
   - **Hecho cuando:** existe una reserva y un enlace de 30 minutos; otra solicitud invalida y libera los anteriores antes de reservar.
 
-- [ ] **T074 — Resolver vencimiento o fallo del cambio de correo**
+- [x] **T074 — Resolver vencimiento o fallo del cambio de correo**
   - **RF/criterios:** RF-08-CA-05 y CA-07; RF-12-CA-07 a CA-09.
   - **Hecho cuando:** correo anterior permanece vigente, reserva se libera y enlace inválido, vencido o no entregado no cambia la cuenta.
 
-- [ ] **T075 — Confirmar el cambio de correo y avisar**
+- [x] **T075 — Confirmar el cambio de correo y avisar**
   - **RF/criterios:** RF-01-CA-15; RF-08-CA-03 y CA-04; RF-12-CA-01.
   - **Hecho cuando:** se revalida unicidad, cambia el correo, cierra sesiones y avisa exactamente una vez al anterior y una al nuevo.
 
-- [ ] **T076 — Probar reclamaciones concurrentes de correo**
+- [x] **T076 — Probar reclamaciones concurrentes de correo**
   - **RF/criterios:** RF-01-CA-16; RF-08-CA-08; RNF-02.
   - **Hecho cuando:** PostgreSQL permite un solo ganador cuando invitaciones, activaciones o cambios reclaman simultáneamente el mismo correo.
 
-- [ ] **T077 — Verificar contraseña y recuperación con Playwright**
+- [x] **T077 — Verificar contraseña y recuperación con Playwright**
   - **RF/criterios:** RF-05; RF-06.
   - **Hecho cuando:** navegador recorre cambio propio, solicitud genérica, recuperación, orden forzada, fallos y restricción posterior con datos ficticios.
 
-- [ ] **T078 — Verificar TOTP y códigos con Playwright**
+- [x] **T078 — Verificar TOTP y códigos con Playwright**
   - **RF/criterios:** RF-07-CA-01 a CA-24.
   - **Hecho cuando:** configuración, uso, regeneración, ambos reemplazos, abandono, QR y pérdida total muestran el comportamiento aprobado.
 
-- [ ] **T079 — Verificar cambio de correo con contrato y Playwright**
+- [x] **T079 — Verificar cambio de correo con contrato y Playwright**
   - **RF/criterios:** RF-08-CA-01 a CA-08; RF-12-CA-01 y CA-07 a CA-09.
   - **Hecho cuando:** éxito, sustitución, vencimiento, fallo, intento ajeno y carrera tienen respuestas sanitizadas y contenido español.
 

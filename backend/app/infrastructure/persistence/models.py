@@ -789,6 +789,26 @@ class PendingSecuritySetup(Base):
             "(status <> 'pending' AND totp_secret_ciphertext IS NULL AND key_version IS NULL)",
             name="ck_pending_security_setups_secret_lifecycle",
         ),
+        CheckConstraint(
+            "((verified_totp_period_counter IS NULL AND "
+            "verified_totp_factor_id IS NULL) OR "
+            "(verified_totp_period_counter IS NOT NULL AND "
+            "verified_totp_factor_id IS NOT NULL)) AND "
+            "NOT (verified_totp_period_counter IS NOT NULL AND "
+            "verified_recovery_code_digest IS NOT NULL) AND "
+            "(status = 'pending' OR (verified_totp_period_counter IS NULL AND "
+            "verified_totp_factor_id IS NULL AND "
+            "verified_recovery_code_digest IS NULL)) AND "
+            "(verified_recovery_code_digest IS NULL OR "
+            "octet_length(verified_recovery_code_digest) = 32)",
+            name="ck_pending_security_setups_verified_proof",
+        ),
+        ForeignKeyConstraint(
+            ["verified_totp_factor_id", "admin_account_id"],
+            ["totp_factors.totp_factor_id", "totp_factors.admin_account_id"],
+            ondelete="CASCADE",
+            name="fk_pending_security_setups_verified_factor_account",
+        ),
         Index(
             "uq_pending_security_setups_account_flow",
             "admin_account_id",
@@ -811,6 +831,15 @@ class PendingSecuritySetup(Base):
         LargeBinary, nullable=True
     )
     key_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verified_totp_period_counter: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    verified_totp_factor_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    verified_recovery_code_digest: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

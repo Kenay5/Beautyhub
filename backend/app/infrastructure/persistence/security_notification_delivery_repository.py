@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Connection, select
+from sqlalchemy import Connection, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from backend.app.application.admin_access.security_notification_deliveries import (
@@ -56,3 +56,27 @@ class PostgresSecurityNotificationDeliveryStore(SecurityNotificationDeliveryStor
             delivery_id=row.security_notification_delivery_id,
             status=row.status,
         )
+
+    def record_immediate_result(self, *, delivery_id: int, outcome: str) -> None:
+        """Keep a confirmed simulator/provider outcome without reverting its action."""
+
+        if outcome not in {"accepted", "failed", "uncertain"}:
+            raise ValueError("security delivery outcome is invalid.")
+        values = {
+            "status": outcome,
+            "sanitized_error": "security delivery failed." if outcome == "failed" else None,
+        }
+        if outcome == "accepted":
+            values["recipient_ciphertext"] = None
+            values["recipient_key_version"] = None
+        updated = self._connection.execute(
+            update(SecurityNotificationDeliveryModel)
+            .where(
+                SecurityNotificationDeliveryModel.security_notification_delivery_id
+                == delivery_id,
+                SecurityNotificationDeliveryModel.status == "pending",
+            )
+            .values(**values)
+        )
+        if updated.rowcount != 1:
+            raise RuntimeError("security delivery intent is no longer pending.")

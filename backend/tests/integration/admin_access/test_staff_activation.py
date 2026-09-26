@@ -69,6 +69,34 @@ def test_t038_activates_pending_staff_with_own_password_totp_and_ten_codes_witho
 
 
 @pytest.mark.integration
+def test_t065_activation_returns_recovery_codes_only_on_the_first_successful_completion(
+    migrated_engine,
+):
+    account = _seed(migrated_engine)
+    prepared = _prepare(migrated_engine)
+    code = pyotp.TOTP(prepared.manual_key).at(NOW)
+
+    first = _complete(migrated_engine, code)
+    repeated = _complete(migrated_engine, code)
+
+    with migrated_engine.connect() as connection:
+        state = connection.execute(
+            text(
+                "SELECT "
+                "(SELECT status FROM security_links WHERE purpose = 'invitation'), "
+                "(SELECT count(*) FROM recovery_codes WHERE admin_account_id = :id), "
+                "(SELECT count(*) FROM admin_sessions WHERE admin_account_id = :id)"
+            ),
+            {"id": account},
+        ).one()
+    assert first.rejection is None
+    assert len(first.recovery_codes) == 10
+    assert repeated.rejection == "unavailable"
+    assert repeated.recovery_codes == ()
+    assert tuple(state) == ("consumed", 10, 0)
+
+
+@pytest.mark.integration
 def test_t040_two_concurrent_staff_activations_allow_exactly_one_complete_winner(
     migrated_engine,
 ):

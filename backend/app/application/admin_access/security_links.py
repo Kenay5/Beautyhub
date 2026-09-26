@@ -54,6 +54,11 @@ class SecurityLinkStore(Protocol):
     def replace_active(self, *, link: SecurityLink) -> StoredSecurityLink:
         """Invalidate the prior account-purpose link and store the replacement."""
 
+    def locate(
+        self, *, token_digest: bytes, purpose: SecurityLinkPurpose
+    ) -> StoredSecurityLink | None:
+        """Resolve the account for lock ordering without validating or consuming."""
+
     def inspect_active(
         self, *, token_digest: bytes, purpose: SecurityLinkPurpose, now: datetime
     ) -> StoredSecurityLink | None:
@@ -119,6 +124,17 @@ class SecurityLinkLifecycle:
             purpose=purpose,
             now=normalize_instant(self._clock.now()),
         )
+
+    def locate(
+        self, *, token: bytes, purpose: SecurityLinkPurpose
+    ) -> StoredSecurityLink | None:
+        """Find the owning account before locking it and revalidating the link."""
+
+        _lifetime_for(purpose)
+        token_digest = self._safe_digest(token)
+        if token_digest is None:
+            return None
+        return self._store.locate(token_digest=token_digest, purpose=purpose)
 
     def consume(
         self, *, token: bytes, purpose: SecurityLinkPurpose

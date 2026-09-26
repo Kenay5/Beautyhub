@@ -71,6 +71,9 @@ class PostgresPendingSecurityStateStore(PendingSecurityStateStore):
                 status="invalidated",
                 totp_secret_ciphertext=None,
                 key_version=None,
+                verified_totp_factor_id=None,
+                verified_totp_period_counter=None,
+                verified_recovery_code_digest=None,
                 updated_at=current_time,
             )
         )
@@ -118,6 +121,9 @@ class PostgresPendingSecurityStateStore(PendingSecurityStateStore):
                 status="invalidated",
                 totp_secret_ciphertext=None,
                 key_version=None,
+                verified_totp_factor_id=None,
+                verified_totp_period_counter=None,
+                verified_recovery_code_digest=None,
                 updated_at=current_time,
             )
         )
@@ -145,6 +151,9 @@ class PostgresPendingSecurityStateStore(PendingSecurityStateStore):
                 status=status,
                 totp_secret_ciphertext=None,
                 key_version=None,
+                verified_totp_factor_id=None,
+                verified_totp_period_counter=None,
+                verified_recovery_code_digest=None,
                 updated_at=current_time,
             )
         )

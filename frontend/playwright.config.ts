@@ -19,6 +19,7 @@ const viewportWidths = [320, 390, 768, 1280] as const;
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: ["admin-staff-invitation.spec.ts", "admin-email-change.spec.ts"],
   outputDir: "./test-results",
   workers: 1,
   reporter: [

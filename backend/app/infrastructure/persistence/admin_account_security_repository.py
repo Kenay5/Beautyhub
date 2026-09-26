@@ -105,6 +105,15 @@ class PostgresAdministrativeAccountSecurityStore(AdministrativeAccountSecuritySt
             .values(post_recovery_second_factor_restricted=True)
         )
 
+    def is_post_recovery_second_factor_restricted(self, *, account_id: int) -> bool:
+        restricted = self._connection.execute(
+            select(AdminAccountSecurityState.post_recovery_second_factor_restricted)
+            .where(AdminAccountSecurityState.admin_account_id == account_id)
+        ).scalar_one_or_none()
+        if restricted is None:
+            raise ValueError("administrative account security state is unavailable.")
+        return restricted
+
     def ensure_credential_check_allowed(
         self, *, account_id: int, current_time: datetime
     ) -> bool:

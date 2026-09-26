@@ -34,6 +34,9 @@ def register_frontend(app: FastAPI) -> None:
 
     @app.get("/admin/security-link", include_in_schema=False)
     @app.get("/admin/staff-activation", include_in_schema=False)
+    @app.get("/admin/password-recovery", include_in_schema=False)
+    @app.get("/admin/totp-replacement", include_in_schema=False)
+    @app.get("/admin/email-change", include_in_schema=False)
     async def administrative_security_link_frontend() -> FileResponse:
         return FileResponse(
             FRONTEND_DIST_DIR / "admin" / "index.html",

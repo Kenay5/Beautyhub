@@ -24,6 +24,9 @@ from backend.app.application.admin_access.staff_invitation import (
 )
 from backend.app.application.clock import SystemClock
 from backend.app.application.entropy import SystemSecretGenerator
+from backend.app.application.transactional_notifications import (
+    TransactionalNotificationPort,
+)
 from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.admin_audit_repository import (
     PostgresAdministrativeAuditStore,
@@ -50,6 +53,7 @@ from backend.app.web.admin_auth.security_link_transport import security_link_fra
 from backend.app.web.admin_auth.mutation_protection import (
     require_administrative_mutation_protection,
 )
+from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
 
 
 router = APIRouter(prefix="/api/admin/staff-invitations", tags=["admin-staff-invitations"])
@@ -78,8 +82,14 @@ class StaffInvitationOperations(Protocol):
 class PostgresStaffInvitationOperations:
     """Coordinate committed invitation state and the separate delivery attempt."""
 
-    def __init__(self, *, engine: Engine) -> None:
+    def __init__(
+        self,
+        *,
+        engine: Engine,
+        email_sender: TransactionalNotificationPort | None = None,
+    ) -> None:
         self._engine = engine
+        self._email_sender = email_sender
         self._clock = SystemClock()
         self._key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
 
@@ -125,7 +135,7 @@ class PostgresStaffInvitationOperations:
         with self._engine.begin() as connection:
             return DeliverStaffInvitation(
                 delivery_state_store=PostgresSecurityLinkStore(connection),
-                email_sender=EmailSimulator(outcome="accepted"),
+                email_sender=self._email_sender or EmailSimulator(outcome="accepted"),
                 audit=self._audit(connection),
                 clock=self._clock,
             ).deliver(invitation=invitation, content=content)
@@ -149,12 +159,6 @@ class PostgresStaffInvitationOperations:
             store=PostgresAdministrativeAuditStore(connection),
             clock=self._clock,
         )
-
-
-def get_authenticated_admin_actor() -> AdministrativeActor:
-    """Fail closed until T053 provides the approved server-side session context."""
-
-    raise HTTPException(status_code=401, detail="Autenticación administrativa requerida.")
 
 
 def get_staff_invitation_operations() -> Iterator[StaffInvitationOperations]:

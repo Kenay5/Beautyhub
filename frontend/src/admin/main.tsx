@@ -11,7 +11,7 @@ if (rootElement === null) {
   throw new Error("Administrative React root was not found.");
 }
 
-const securityLinkToken = ["/admin/security-link", "/admin/staff-activation"].includes(window.location.pathname)
+const securityLinkToken = ["/admin/security-link", "/admin/staff-activation", "/admin/password-recovery", "/admin/totp-replacement", "/admin/email-change"].includes(window.location.pathname)
   ? takeSecurityLinkTokenFromFragment(window.location, window.history)
   : null;
 

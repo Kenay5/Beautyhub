@@ -3,13 +3,24 @@ import { expect, test } from "@playwright/test";
 
 
 const token = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+const csrfToken = "synthetic-csrf-token";
 const recoveryCodes = Array.from("RSTUVWXYZ2", (value) => `ABCD-EFGH-JKLM-NPQ${value}`);
 
 
 test("T035-T037 exposes the minimum owner invitation interface and safe delivery states", async ({ page }) => {
-  const requests: Array<{ path: string; body: unknown }> = [];
+  const requests: Array<{ path: string; body: unknown; csrf: string | undefined }> = [];
+  await page.route("**/api/admin/sessions/current", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ accountId: 7, role: "owner", csrfToken }),
+    });
+  });
   await page.route("**/api/admin/staff-invitations", async (route) => {
-    requests.push({ path: "invite", body: route.request().postDataJSON() });
+    requests.push({
+      path: "invite",
+      body: route.request().postDataJSON(),
+      csrf: route.request().headers()["x-csrf-token"],
+    });
     await route.fulfill({
       status: 201,
       contentType: "application/json",
@@ -21,14 +32,22 @@ test("T035-T037 exposes the minimum owner invitation interface and safe delivery
     });
   });
   await page.route("**/api/admin/staff-invitations/resend", async (route) => {
-    requests.push({ path: "resend", body: route.request().postData() });
+    requests.push({
+      path: "resend",
+      body: route.request().postData(),
+      csrf: route.request().headers()["x-csrf-token"],
+    });
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ status: "pending", deliveryStatus: "accepted", detail: null }),
     });
   });
   await page.route("**/api/admin/staff-invitations/cancel", async (route) => {
-    requests.push({ path: "cancel", body: route.request().postData() });
+    requests.push({
+      path: "cancel",
+      body: route.request().postData(),
+      csrf: route.request().headers()["x-csrf-token"],
+    });
     await route.fulfill({ status: 204 });
   });
 
@@ -47,9 +66,9 @@ test("T035-T037 exposes the minimum owner invitation interface and safe delivery
   await expect(page.getByLabel("Correo del personal")).toBeVisible();
 
   expect(requests).toEqual([
-    { path: "invite", body: { email: "synthetic.staff@example.test" } },
-    { path: "resend", body: null },
-    { path: "cancel", body: null },
+    { path: "invite", body: { email: "synthetic.staff@example.test" }, csrf: csrfToken },
+    { path: "resend", body: null, csrf: csrfToken },
+    { path: "cancel", body: null, csrf: csrfToken },
   ]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);

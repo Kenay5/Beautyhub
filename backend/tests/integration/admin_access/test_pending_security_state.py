@@ -15,12 +15,18 @@ from sqlalchemy import Engine, text
 from backend.app.application.admin_access.pending_security_state import (
     DiscardPendingSecurityState,
 )
+from backend.app.application.admin_access.security_change_invalidation import (
+    InvalidateAfterSecurityChange,
+)
 from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
 from backend.app.application.clock import FixedClock
 from backend.app.application.entropy import SequenceSecretGenerator
 from backend.app.infrastructure.persistence.database import create_postgres_engine
 from backend.app.infrastructure.persistence.pending_security_state_repository import (
     PostgresPendingSecurityStateStore,
+)
+from backend.app.infrastructure.persistence.security_change_invalidation_repository import (
+    PostgresSecurityChangeInvalidationStore,
 )
 from backend.app.infrastructure.persistence.security_link_repository import (
     PostgresSecurityLinkStore,
@@ -494,5 +500,140 @@ def test_t029_expired_initial_activation_discards_owner_setup_without_activating
             ).one()
         assert account_status == "deactivated"
         assert setup == ("expired", None, None)
+    finally:
+        _delete_account(migrated_engine, account_id)
+
+
+@pytest.mark.integration
+def test_t052_security_change_closes_sessions_and_discards_temporary_state(
+    migrated_engine: Engine,
+) -> None:
+    account_id = _create_account(migrated_engine)
+    invalidated_at = NOW + timedelta(minutes=1)
+    try:
+        with migrated_engine.begin() as connection:
+            _insert_active_credentials(connection, account_id=account_id)
+            _insert_pending_setup(
+                connection, account_id=account_id, flow="totp_replacement"
+            )
+            _insert_email_claim(
+                connection, account_id=account_id, kind="current", marker=136
+            )
+            _insert_email_claim(
+                connection, account_id=account_id, kind="reserved", marker=137
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO security_links (
+                        admin_account_id, purpose, token_digest, key_version,
+                        issued_at, expires_at, status, delivery_status,
+                        consumed_at, invalidated_at
+                    ) VALUES (
+                        :account_id, 'password_recovery', :digest, 'v1',
+                        :issued_at, :expires_at, 'active', 'accepted', NULL, NULL
+                    )
+                    """
+                ),
+                {
+                    "account_id": account_id,
+                    "digest": _test_digest(account_id, marker=138),
+                    "issued_at": NOW,
+                    "expires_at": NOW + timedelta(minutes=30),
+                },
+            )
+
+            InvalidateAfterSecurityChange(
+                store=PostgresSecurityChangeInvalidationStore(connection),
+                clock=FixedClock(invalidated_at),
+            ).execute(account_id=account_id)
+
+        with migrated_engine.connect() as connection:
+            session = connection.execute(
+                text(
+                    "SELECT status, invalidated_at FROM admin_sessions "
+                    "WHERE admin_account_id = :account_id"
+                ),
+                {"account_id": account_id},
+            ).one()
+            link = connection.execute(
+                text(
+                    "SELECT status, invalidated_at FROM security_links "
+                    "WHERE admin_account_id = :account_id"
+                ),
+                {"account_id": account_id},
+            ).one()
+            setup = connection.execute(
+                text(
+                    "SELECT status, totp_secret_ciphertext, key_version "
+                    "FROM pending_security_setups WHERE admin_account_id = :account_id"
+                ),
+                {"account_id": account_id},
+            ).one()
+            claim_kinds = connection.execute(
+                text(
+                    "SELECT claim_kind FROM admin_email_claims "
+                    "WHERE admin_account_id = :account_id ORDER BY claim_kind"
+                ),
+                {"account_id": account_id},
+            ).scalars().all()
+            active_credentials = connection.execute(
+                text(
+                    "SELECT "
+                    "(SELECT status FROM totp_factors WHERE admin_account_id = :account_id), "
+                    "(SELECT status FROM recovery_codes WHERE admin_account_id = :account_id)"
+                ),
+                {"account_id": account_id},
+            ).one()
+
+        assert session == ("invalidated", invalidated_at)
+        assert link == ("invalidated", invalidated_at)
+        assert setup == ("invalidated", None, None)
+        assert claim_kinds == ["current"]
+        assert active_credentials == ("active", "active")
+    finally:
+        _delete_account(migrated_engine, account_id)
+
+
+@pytest.mark.integration
+def test_t052_invalidation_rolls_back_with_the_security_change_transaction(
+    migrated_engine: Engine,
+) -> None:
+    account_id = _create_account(migrated_engine)
+    try:
+        with migrated_engine.begin() as connection:
+            _insert_active_credentials(connection, account_id=account_id)
+            _insert_pending_setup(
+                connection, account_id=account_id, flow="totp_replacement"
+            )
+            _insert_email_claim(
+                connection, account_id=account_id, kind="reserved", marker=139
+            )
+
+        connection = migrated_engine.connect()
+        transaction = connection.begin()
+        try:
+            InvalidateAfterSecurityChange(
+                store=PostgresSecurityChangeInvalidationStore(connection),
+                clock=FixedClock(NOW + timedelta(minutes=1)),
+            ).execute(account_id=account_id)
+        finally:
+            transaction.rollback()
+            connection.close()
+
+        with migrated_engine.connect() as connection:
+            states = connection.execute(
+                text(
+                    "SELECT "
+                    "(SELECT status FROM admin_sessions WHERE admin_account_id = :account_id), "
+                    "(SELECT status FROM pending_security_setups "
+                    " WHERE admin_account_id = :account_id), "
+                    "(SELECT claim_kind FROM admin_email_claims "
+                    " WHERE admin_account_id = :account_id)"
+                ),
+                {"account_id": account_id},
+            ).one()
+
+        assert states == ("active", "pending", "reserved")
     finally:
         _delete_account(migrated_engine, account_id)

@@ -132,6 +132,22 @@ class PostgresSecurityLinkStore(SecurityLinkStore):
         ).one_or_none()
         return None if row is None else _stored_link(row)
 
+    def locate(self, *, token_digest: bytes, purpose: SecurityLinkPurpose) -> StoredSecurityLink | None:
+        """Return the token's account identity without changing its lifecycle."""
+
+        row = self._connection.execute(
+            select(
+                SecurityLinkModel.security_link_id,
+                SecurityLinkModel.admin_account_id,
+                SecurityLinkModel.purpose,
+                SecurityLinkModel.expires_at,
+            ).where(
+                SecurityLinkModel.token_digest == token_digest,
+                SecurityLinkModel.purpose == purpose,
+            )
+        ).one_or_none()
+        return None if row is None else _stored_link(row)
+
     def consume_active(
         self, *, token_digest: bytes, purpose: SecurityLinkPurpose, now: datetime
     ) -> StoredSecurityLink | None:
@@ -181,6 +197,7 @@ class PostgresSecurityLinkStore(SecurityLinkStore):
             update(SecurityLinkModel)
             .where(
                 SecurityLinkModel.security_link_id == link_id,
+                SecurityLinkModel.status == "active",
                 SecurityLinkModel.delivery_status == "pending",
             )
             .values(

@@ -16,6 +16,7 @@ from alembic.config import Config
 from sqlalchemy import Engine, func, insert, select, text, update
 
 from backend.app.application.admin_access.account_security import (
+    CheckPostRecoveryFactorReplacement,
     EnsureAdministrativeCredentialCheck,
     RecordAdministrativeCredentialFailure,
 )
@@ -25,14 +26,18 @@ from backend.app.application.admin_access.login_completion import (
 )
 from backend.app.application.admin_access.login_session import (
     CreateAdministrativeLoginSession,
+    AdministrativeLoginSessionValueError,
+)
+from backend.app.application.admin_access.login_validation import (
+    ValidateAdministrativeLogin,
 )
 from backend.app.application.admin_access.logout import CloseAdministrativeSession
 from backend.app.application.admin_access.mutation_protection import (
     AdministrativeSessionAuthenticationError,
     ValidateAdministrativeMutationProtection,
 )
-from backend.app.application.admin_access.login_validation import (
-    ValidateAdministrativeLogin,
+from backend.app.application.admin_access.session_context import (
+    LoadAdministrativeSessionContext,
 )
 from backend.app.application.clock import FixedClock
 from backend.app.application.entropy import SequenceSecretGenerator, SystemSecretGenerator
@@ -60,6 +65,7 @@ from backend.app.infrastructure.persistence.models import (
     AdminCredentialFailureEvent,
     AdminEmailClaim,
     AdminSession,
+    RecoveryCode,
     TotpFactor,
     TotpPeriodUse,
 )
@@ -71,6 +77,9 @@ from backend.app.infrastructure.security.admin_session_protection import (
 )
 from backend.app.infrastructure.security.administrative_password_hashing import (
     AdministrativePasswordHasher,
+)
+from backend.app.infrastructure.security.recovery_code_protection import (
+    RecoveryCodeProtector,
 )
 from backend.app.infrastructure.security.cryptography_key_ring import CryptographyKeyRing
 from backend.app.infrastructure.security.recovery_code_protection import (
@@ -93,6 +102,9 @@ PASSWORD = "synthetic owner password"
 SECRET = b"JBSWY3DPEHPK3PXP"
 SESSION_TOKEN = b"\x51" * 32
 CSRF_TOKEN = b"\x52" * 32
+REFRESHED_CSRF_TOKEN = b"\x53" * 32
+STAFF_SESSION_TOKEN = b"\x54" * 32
+STAFF_CSRF_TOKEN = b"\x55" * 32
 
 
 @pytest.fixture()
@@ -118,6 +130,10 @@ def migrated_engine() -> Iterator[Engine]:
             )
         yield engine
     finally:
+        with engine.begin() as connection:
+            connection.execute(
+                text("TRUNCATE TABLE admin_accounts RESTART IDENTITY CASCADE")
+            )
         engine.dispose()
 
 
@@ -216,12 +232,13 @@ def _validator(connection) -> ValidateAdministrativeLogin:
     )
 
 
-def _login(connection, *, code: str, tokens=None):
+def _login(connection, *, code: str | None = None, recovery_code: str | None = None, tokens=None):
     clock = FixedClock(NOW)
     validation = _validator(connection).validate(
         email=EMAIL,
         password=PASSWORD,
         totp_code=code,
+        recovery_code=recovery_code,
     )
     credentials = CompleteAdministrativeLoginCredentials(
         factor_store=PostgresAdministrativeLoginFactorStore(connection),
@@ -242,6 +259,240 @@ def _login(connection, *, code: str, tokens=None):
         ),
         clock=clock,
     ).create(validation=validation)
+
+
+@pytest.mark.integration
+def test_t064_failed_factor_authentication_keeps_post_recovery_restriction(
+    migrated_engine: Engine,
+) -> None:
+    _seed_account(migrated_engine)
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            update(AdminAccountSecurityState)
+            .where(AdminAccountSecurityState.admin_account_id == 1)
+            .values(post_recovery_second_factor_restricted=True)
+        )
+        outcome = _login(connection, code="000000")
+
+    with migrated_engine.connect() as connection:
+        restricted = connection.execute(
+            select(AdminAccountSecurityState.post_recovery_second_factor_restricted)
+            .where(AdminAccountSecurityState.admin_account_id == 1)
+        ).scalar_one()
+        active_sessions = connection.execute(
+            select(func.count()).select_from(AdminSession).where(AdminSession.status == "active")
+        ).scalar_one()
+    assert not outcome.accepted
+    assert restricted
+    assert active_sessions == 0
+
+
+@pytest.mark.integration
+def test_t064_only_successful_totp_login_clears_post_recovery_restriction(
+    migrated_engine: Engine,
+) -> None:
+    _seed_account(migrated_engine)
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            update(AdminAccountSecurityState)
+            .where(AdminAccountSecurityState.admin_account_id == 1)
+            .values(post_recovery_second_factor_restricted=True)
+        )
+        outcome = _login(connection, code=pyotp.TOTP(SECRET.decode("ascii")).at(NOW))
+
+    with migrated_engine.connect() as connection:
+        restricted = connection.execute(
+            select(AdminAccountSecurityState.post_recovery_second_factor_restricted)
+            .where(AdminAccountSecurityState.admin_account_id == 1)
+        ).scalar_one()
+        session_count = connection.execute(
+            select(func.count()).select_from(AdminSession).where(AdminSession.status == "active")
+        ).scalar_one()
+        factor_replacement_allowed = CheckPostRecoveryFactorReplacement(
+            store=PostgresAdministrativeAccountSecurityStore(connection)
+        ).is_allowed(account_id=1)
+    assert outcome.accepted
+    assert not restricted
+    assert factor_replacement_allowed
+    assert session_count == 1
+
+
+@pytest.mark.integration
+def test_t064_successful_recovery_code_login_clears_post_recovery_restriction(
+    migrated_engine: Engine,
+) -> None:
+    recovery_code = "ABCD-EFGH-JKLM-NPQR"
+    _seed_account(migrated_engine)
+    protector = RecoveryCodeProtector(key_ring=_ring())
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            update(AdminAccountSecurityState)
+            .where(AdminAccountSecurityState.admin_account_id == 1)
+            .values(post_recovery_second_factor_restricted=True)
+        )
+        connection.execute(
+            insert(RecoveryCode).values(
+                admin_account_id=1,
+                lookup_digest=protector.digest(recovery_code.replace("-", "")),
+                key_version="v1",
+                position=1,
+                status="active",
+            )
+        )
+        outcome = _login(connection, recovery_code=recovery_code.lower())
+
+    with migrated_engine.connect() as connection:
+        restricted = connection.execute(
+            select(AdminAccountSecurityState.post_recovery_second_factor_restricted)
+            .where(AdminAccountSecurityState.admin_account_id == 1)
+        ).scalar_one()
+        code_status = connection.execute(select(RecoveryCode.status)).scalar_one()
+    assert outcome.accepted
+    assert not restricted
+    assert code_status == "used"
+
+
+@pytest.mark.integration
+def test_t065_correct_recovery_code_is_consumed_only_with_a_completed_login(
+    migrated_engine: Engine,
+) -> None:
+    recovery_code = "ABCD-EFGH-JKLM-NPQR"
+    _seed_account(migrated_engine)
+    protector = RecoveryCodeProtector(key_ring=_ring())
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            insert(RecoveryCode).values(
+                admin_account_id=1,
+                lookup_digest=protector.digest(recovery_code.replace("-", "")),
+                key_version="v1",
+                position=1,
+                status="active",
+            )
+        )
+        outcome = _login(connection, recovery_code=recovery_code.lower())
+
+    with migrated_engine.connect() as connection:
+        code_status = connection.execute(select(RecoveryCode.status)).scalar_one()
+        active_sessions = connection.execute(
+            select(func.count()).select_from(AdminSession).where(AdminSession.status == "active")
+        ).scalar_one()
+        failures = connection.execute(
+            select(func.count()).select_from(AdminCredentialFailureEvent)
+        ).scalar_one()
+    assert outcome.accepted
+    assert code_status == "used"
+    assert active_sessions == 1
+    assert failures == 0
+
+
+@pytest.mark.integration
+def test_t065_incorrect_recovery_code_preserves_the_entire_lot_and_records_one_failure(
+    migrated_engine: Engine,
+) -> None:
+    _seed_account(migrated_engine)
+    protector = RecoveryCodeProtector(key_ring=_ring())
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            insert(RecoveryCode),
+            tuple(
+                {
+                    "admin_account_id": 1,
+                    "lookup_digest": protector.digest(code.replace("-", "")),
+                    "key_version": "v1",
+                    "position": position,
+                    "status": "active",
+                }
+                for position, code in enumerate(("ABCD-EFGH-JKLM-NPQR", "2345-6789-ABCD-EFGH"), 1)
+            ),
+        )
+        outcome = _login(connection, recovery_code="ZZZZ-ZZZZ-ZZZZ-ZZZZ")
+
+    with migrated_engine.connect() as connection:
+        statuses = tuple(connection.execute(select(RecoveryCode.status).order_by(RecoveryCode.position)).scalars())
+        failures = connection.execute(
+            select(func.count()).select_from(AdminCredentialFailureEvent)
+        ).scalar_one()
+        sessions = connection.execute(
+            select(func.count()).select_from(AdminSession).where(AdminSession.status == "active")
+        ).scalar_one()
+    assert not outcome.accepted
+    assert statuses == ("active", "active")
+    assert failures == 1
+    assert sessions == 0
+
+
+@pytest.mark.integration
+def test_t065_reused_recovery_code_is_rejected_without_consuming_remaining_codes(
+    migrated_engine: Engine,
+) -> None:
+    recovery_code = "ABCD-EFGH-JKLM-NPQR"
+    _seed_account(migrated_engine)
+    protector = RecoveryCodeProtector(key_ring=_ring())
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            insert(RecoveryCode),
+            tuple(
+                {
+                    "admin_account_id": 1,
+                    "lookup_digest": protector.digest(code.replace("-", "")),
+                    "key_version": "v1",
+                    "position": position,
+                    "status": "active",
+                }
+                for position, code in enumerate((recovery_code, "2345-6789-ABCD-EFGH"), 1)
+            ),
+        )
+        first = _login(connection, recovery_code=recovery_code)
+    with migrated_engine.begin() as connection:
+        reused = _login(connection, recovery_code=recovery_code)
+
+    with migrated_engine.connect() as connection:
+        statuses = tuple(connection.execute(select(RecoveryCode.status).order_by(RecoveryCode.position)).scalars())
+        failures = connection.execute(
+            select(func.count()).select_from(AdminCredentialFailureEvent)
+        ).scalar_one()
+        sessions = connection.execute(
+            select(func.count()).select_from(AdminSession).where(AdminSession.status == "active")
+        ).scalar_one()
+    assert first.accepted
+    assert not reused.accepted
+    assert statuses == ("used", "active")
+    assert failures == 1
+    assert sessions == 1
+
+
+@pytest.mark.integration
+def test_t065_valid_code_is_restored_if_session_creation_fails(
+    migrated_engine: Engine,
+) -> None:
+    recovery_code = "ABCD-EFGH-JKLM-NPQR"
+    _seed_account(migrated_engine)
+    protector = RecoveryCodeProtector(key_ring=_ring())
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            insert(RecoveryCode).values(
+                admin_account_id=1,
+                lookup_digest=protector.digest(recovery_code.replace("-", "")),
+                key_version="v1",
+                position=1,
+                status="active",
+            )
+        )
+    with pytest.raises(AdministrativeLoginSessionValueError):
+        with migrated_engine.begin() as connection:
+            _login(
+                connection,
+                recovery_code=recovery_code,
+                tokens=SequenceSecretGenerator((SESSION_TOKEN, SESSION_TOKEN)),
+            )
+
+    with migrated_engine.connect() as connection:
+        code_status = connection.execute(select(RecoveryCode.status)).scalar_one()
+        active_sessions = connection.execute(
+            select(func.count()).select_from(AdminSession).where(AdminSession.status == "active")
+        ).scalar_one()
+    assert code_status == "active"
+    assert active_sessions == 0
 
 
 @pytest.mark.integration
@@ -602,6 +853,102 @@ def test_t050_absolute_expiry_invalidates_even_after_recent_activity(
         ).one()
 
     assert absolute_state == ("invalidated", NOW + timedelta(hours=8))
+
+
+@pytest.mark.integration
+def test_t053_context_revalidates_account_and_rotates_csrf_without_activity(
+    migrated_engine: Engine,
+) -> None:
+    _seed_account(migrated_engine)
+    with migrated_engine.begin() as connection:
+        outcome = _login(
+            connection,
+            code=pyotp.TOTP(SECRET.decode("ascii")).at(NOW),
+            tokens=SequenceSecretGenerator((SESSION_TOKEN, CSRF_TOKEN)),
+        )
+    assert outcome.accepted
+    context_time = NOW + timedelta(minutes=1)
+
+    with migrated_engine.begin() as connection:
+        context = LoadAdministrativeSessionContext(
+            store=PostgresAdministrativeCsrfSessionStore(connection),
+            protector=AdminSessionProtector(key_ring=_ring()),
+            secret_generator=SequenceSecretGenerator((REFRESHED_CSRF_TOKEN,)),
+            clock=FixedClock(context_time),
+        ).refresh(session_token=SESSION_TOKEN)
+
+    with migrated_engine.connect() as connection:
+        stored_session = connection.execute(
+            select(
+                AdminSession.csrf_digest,
+                AdminSession.last_human_activity_at,
+                AdminSession.status,
+            )
+        ).one()
+
+    assert (context.actor.account_id, context.actor.role) == (1, "owner")
+    assert context.csrf_token == REFRESHED_CSRF_TOKEN
+    assert stored_session == (
+        AdminSessionProtector(key_ring=_ring()).digest_csrf_token(
+            REFRESHED_CSRF_TOKEN
+        ),
+        NOW,
+        "active",
+    )
+
+    protector = AdminSessionProtector(key_ring=_ring())
+    with migrated_engine.begin() as connection:
+        staff_account_id = connection.execute(
+            insert(AdminAccount)
+            .values(
+                role="staff",
+                status="active",
+                password_hash=AdministrativePasswordHasher().hash_password(PASSWORD),
+            )
+            .returning(AdminAccount.admin_account_id)
+        ).scalar_one()
+        connection.execute(
+            insert(AdminSession).values(
+                admin_account_id=staff_account_id,
+                session_digest=protector.digest_session_token(STAFF_SESSION_TOKEN),
+                csrf_digest=protector.digest_csrf_token(STAFF_CSRF_TOKEN),
+                key_version="v1",
+                created_at=NOW,
+                last_human_activity_at=NOW,
+                absolute_expires_at=NOW + timedelta(hours=8),
+                status="active",
+            )
+        )
+        connection.execute(
+            update(AdminAccount)
+            .where(AdminAccount.admin_account_id == staff_account_id)
+            .values(status="deactivated", updated_at=context_time)
+        )
+
+    with migrated_engine.connect() as connection:
+        with pytest.raises(
+            AdministrativeSessionAuthenticationError,
+            match="administrative session is unavailable",
+        ):
+            LoadAdministrativeSessionContext(
+                store=PostgresAdministrativeCsrfSessionStore(connection),
+                protector=AdminSessionProtector(key_ring=_ring()),
+                secret_generator=SequenceSecretGenerator(()),
+                clock=FixedClock(context_time),
+            ).authenticate(session_token=STAFF_SESSION_TOKEN)
+        with pytest.raises(AdministrativeSessionAuthenticationError):
+            ValidateAdministrativeMutationProtection(
+                store=PostgresAdministrativeCsrfSessionStore(connection),
+                protector=protector,
+                clock=FixedClock(context_time),
+            ).validate(
+                session_token=STAFF_SESSION_TOKEN,
+                csrf_token=STAFF_CSRF_TOKEN,
+                approved_origin="https://beautyhub.example.test",
+                origin="https://beautyhub.example.test",
+                referer=None,
+                human_initiated=True,
+            )
 
 
 def _run_concurrently(engine: Engine, codes: tuple[str, str]) -> list[bool]:

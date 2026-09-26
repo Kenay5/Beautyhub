@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Connection, delete, insert, or_, select, update
+from sqlalchemy import Connection, delete, exists, insert, or_, select, update
 
 from backend.app.application.admin_access.login_session import (
     AdministrativeLoginSessionStore,
@@ -15,6 +15,10 @@ from backend.app.application.admin_access.logout import (
 )
 from backend.app.application.admin_access.mutation_protection import (
     AdministrativeCsrfSessionStore,
+)
+from backend.app.application.admin_access.session_context import (
+    AdministrativeSessionContextStore,
+    StoredAdministrativeSessionContext,
 )
 from backend.app.domain.sessions.admin_session import (
     SESSION_ABSOLUTE_LIMIT,
@@ -72,7 +76,11 @@ class PostgresAdministrativeLoginSessionStore(AdministrativeLoginSessionStore):
         self._connection.execute(
             update(AdminAccountSecurityState)
             .where(AdminAccountSecurityState.admin_account_id == account_id)
-            .values(lock_until=None, fifth_failure_event_id=None)
+            .values(
+                lock_until=None,
+                fifth_failure_event_id=None,
+                post_recovery_second_factor_restricted=False,
+            )
         )
         self._connection.execute(
             delete(AdminCredentialFailureEvent).where(
@@ -103,6 +111,7 @@ class PostgresAdministrativeLoginSessionStore(AdministrativeLoginSessionStore):
 class PostgresAdministrativeCsrfSessionStore(
     AdministrativeCsrfSessionStore,
     AdministrativeSessionLogoutStore,
+    AdministrativeSessionContextStore,
 ):
     """Load and conditionally renew one active administrative session."""
 
@@ -123,9 +132,15 @@ class PostgresAdministrativeCsrfSessionStore(
                 AdminSession.absolute_expires_at,
                 AdminSession.status,
                 AdminSession.invalidated_at,
-            ).where(
+            )
+            .join(
+                AdminAccount,
+                AdminAccount.admin_account_id == AdminSession.admin_account_id,
+            )
+            .where(
                 AdminSession.session_digest == session_digest,
                 AdminSession.status == "active",
+                AdminAccount.status == "active",
             )
         ).one_or_none()
         if row is None:
@@ -142,9 +157,62 @@ class PostgresAdministrativeCsrfSessionStore(
             invalidated_at=row.invalidated_at,
         )
 
-    def touch_human_activity(
-        self, *, session_digest: bytes, current_time: datetime
+    def load_active_context(
+        self, *, session_digest: bytes
+    ) -> StoredAdministrativeSessionContext | None:
+        row = self._connection.execute(
+            select(
+                AdminAccount.role,
+                AdminSession.admin_account_id,
+                AdminSession.session_digest,
+                AdminSession.csrf_digest,
+                AdminSession.key_version,
+                AdminSession.created_at,
+                AdminSession.last_human_activity_at,
+                AdminSession.absolute_expires_at,
+                AdminSession.status,
+                AdminSession.invalidated_at,
+            )
+            .join(
+                AdminAccount,
+                AdminAccount.admin_account_id == AdminSession.admin_account_id,
+            )
+            .where(
+                AdminSession.session_digest == session_digest,
+                AdminSession.status == "active",
+                AdminAccount.status == "active",
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return StoredAdministrativeSessionContext(
+            session=AdministrativeSession(
+                account_id=row.admin_account_id,
+                session_digest=row.session_digest,
+                csrf_digest=row.csrf_digest,
+                key_version=row.key_version,
+                created_at=row.created_at,
+                last_human_activity_at=row.last_human_activity_at,
+                absolute_expires_at=row.absolute_expires_at,
+                status=row.status,
+                invalidated_at=row.invalidated_at,
+            ),
+            role=row.role,
+        )
+
+    def replace_csrf_digest(
+        self,
+        *,
+        session_digest: bytes,
+        csrf_digest: bytes,
+        current_time: datetime,
     ) -> bool:
+        active_account = exists(
+            select(AdminAccount.admin_account_id).where(
+                AdminAccount.admin_account_id == AdminSession.admin_account_id,
+                AdminAccount.status == "active",
+            )
+        )
         result = self._connection.execute(
             update(AdminSession)
             .where(
@@ -153,6 +221,30 @@ class PostgresAdministrativeCsrfSessionStore(
                 AdminSession.last_human_activity_at
                 > current_time - SESSION_INACTIVITY_LIMIT,
                 AdminSession.absolute_expires_at > current_time,
+                active_account,
+            )
+            .values(csrf_digest=csrf_digest)
+        )
+        return result.rowcount == 1
+
+    def touch_human_activity(
+        self, *, session_digest: bytes, current_time: datetime
+    ) -> bool:
+        active_account = exists(
+            select(AdminAccount.admin_account_id).where(
+                AdminAccount.admin_account_id == AdminSession.admin_account_id,
+                AdminAccount.status == "active",
+            )
+        )
+        result = self._connection.execute(
+            update(AdminSession)
+            .where(
+                AdminSession.session_digest == session_digest,
+                AdminSession.status == "active",
+                AdminSession.last_human_activity_at
+                > current_time - SESSION_INACTIVITY_LIMIT,
+                AdminSession.absolute_expires_at > current_time,
+                active_account,
             )
             .values(last_human_activity_at=current_time)
         )

@@ -30,6 +30,9 @@ class AdministrativeAccountSecurityStore(Protocol):
     ) -> None:
         """Require a later full authentication before lost-factor replacement."""
 
+    def is_post_recovery_second_factor_restricted(self, *, account_id: int) -> bool:
+        """Return whether password-only lost-factor replacement must be denied."""
+
     def ensure_credential_check_allowed(
         self, *, account_id: int, current_time: datetime
     ) -> bool:
@@ -163,6 +166,19 @@ class RestrictPostRecoveryFactorReplacement:
 
         _require_account_id(account_id)
         self._store.set_post_recovery_second_factor_restriction(account_id=account_id)
+
+
+class CheckPostRecoveryFactorReplacement:
+    """Deny lost-factor recovery while the post-password-recovery restriction remains."""
+
+    def __init__(self, *, store: AdministrativeAccountSecurityStore) -> None:
+        self._store = store
+
+    def is_allowed(self, *, account_id: int) -> bool:
+        _require_account_id(account_id)
+        return not self._store.is_post_recovery_second_factor_restricted(
+            account_id=account_id
+        )
 
 
 def _require_account_id(account_id: int) -> None:

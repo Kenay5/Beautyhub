@@ -1,6 +1,7 @@
 """T049 HTTP evidence that rejected mutation protection runs before effects."""
 
 import base64
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -169,4 +170,32 @@ def test_t049_missing_session_returns_401_before_any_effect() -> None:
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Autenticación administrativa requerida."}
+    assert operations.calls == []
+
+
+def test_t055_rejected_browser_proofs_are_absent_from_response_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    operations = RecordingOperations()
+    session_value = _encoded(SESSION_TOKEN)
+    csrf_value = _encoded(WRONG_CSRF_TOKEN)
+
+    with caplog.at_level(logging.DEBUG), _client(operations) as client:
+        response = client.post(
+            "/api/admin/staff-invitations",
+            headers={
+                "cookie": f"{ADMINISTRATIVE_SESSION_COOKIE}={session_value}",
+                ADMINISTRATIVE_CSRF_HEADER: csrf_value,
+                "origin": ORIGIN,
+            },
+            json={"email": "synthetic.staff@example.test"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "No tienes permiso para realizar esta operación."
+    }
+    observable = " ".join((response.text, str(response.headers), caplog.text))
+    assert session_value not in observable
+    assert csrf_value not in observable
     assert operations.calls == []

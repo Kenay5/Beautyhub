@@ -11,7 +11,7 @@ import pyotp
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, insert, text
+from sqlalchemy import Engine, insert, text, update
 
 from backend.app.application.admin_access.account_security import (
     EnsureAdministrativeCredentialCheck,
@@ -136,3 +136,62 @@ def test_t043_postgres_returns_the_same_rejection_for_unknown_account_and_wrong_
 
     assert {outcome.rejection for outcome in outcomes} == {"invalid_credentials"}
     assert all(outcome.validated is None for outcome in outcomes)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("credential_state", ["absent", "invalidated"])
+def test_t071_login_never_bypasses_missing_or_invalidated_second_factors(
+    migrated_engine: Engine,
+    credential_state: str,
+) -> None:
+    _seed(migrated_engine)
+    with migrated_engine.begin() as connection:
+        if credential_state == "absent":
+            connection.execute(
+                text("DELETE FROM recovery_codes WHERE admin_account_id = 1")
+            )
+            connection.execute(
+                text("DELETE FROM totp_factors WHERE admin_account_id = 1")
+            )
+        else:
+            connection.execute(
+                update(TotpFactor)
+                .where(TotpFactor.admin_account_id == 1)
+                .values(
+                    status="invalidated",
+                    totp_secret_ciphertext=None,
+                    key_version=None,
+                    invalidated_at=NOW,
+                )
+            )
+            connection.execute(
+                update(RecoveryCode)
+                .where(RecoveryCode.admin_account_id == 1)
+                .values(status="invalidated", invalidated_at=NOW)
+            )
+
+    with migrated_engine.connect() as connection:
+        validator = _validator(connection)
+        outcomes = (
+            validator.validate(email=EMAIL, password=PASSWORD),
+            validator.validate(
+                email=EMAIL,
+                password=PASSWORD,
+                totp_code=pyotp.TOTP(SECRET.decode("ascii")).at(NOW),
+            ),
+            validator.validate(
+                email=EMAIL,
+                password=PASSWORD,
+                recovery_code=RECOVERY,
+            ),
+        )
+        state = connection.execute(
+            text(
+                "SELECT (SELECT count(*) FROM admin_sessions), "
+                "(SELECT count(*) FROM totp_period_uses)"
+            )
+        ).one()
+
+    assert {outcome.rejection for outcome in outcomes} == {"invalid_credentials"}
+    assert all(outcome.validated is None for outcome in outcomes)
+    assert tuple(state) == (0, 0)
