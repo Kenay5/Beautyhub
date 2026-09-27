@@ -29,17 +29,6 @@ from backend.app.infrastructure.whatsapp_simulator import WhatsAppSimulator
 NOW = datetime(2030, 6, 15, 12, tzinfo=BUSINESS_TIME_ZONE)
 
 
-class RecordingAuthorizer:
-    def __init__(self, *, allowed: bool = True) -> None:
-        self.allowed = allowed
-        self.actors: list[AdministrativeReminderRetryActor] = []
-
-    def ensure_allowed(self, actor: AdministrativeReminderRetryActor) -> None:
-        self.actors.append(actor)
-        if not self.allowed:
-            raise AdministrativeReminderRetryNotAuthorizedError("synthetic denial")
-
-
 class RecordingLimiter:
     def __init__(self, *, allowed: bool = True) -> None:
         self.allowed = allowed
@@ -85,11 +74,18 @@ class RecordingResultWriter:
         self.results.append(values)
 
 
+class RecordingAudit:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def record(self, **event: object) -> None:
+        self.events.append(event)
+
+
 @pytest.mark.parametrize("role", ("owner", "staff"))
 def test_t093g_allows_an_authorized_owner_or_staff_once_and_uses_current_contact(
     role: str,
 ) -> None:
-    authorizer = RecordingAuthorizer()
     limiter = RecordingLimiter()
     repository = FakeReminderRetryRepository(_context())
     email = EmailSimulator(outcome="accepted")
@@ -97,7 +93,6 @@ def test_t093g_allows_an_authorized_owner_or_staff_once_and_uses_current_contact
 
     result = _service(
         repository=repository,
-        authorizer=authorizer,
         limiter=limiter,
         email=email,
         whatsapp=whatsapp,
@@ -107,7 +102,6 @@ def test_t093g_allows_an_authorized_owner_or_staff_once_and_uses_current_contact
     assert result.previous_delivery_id == 31
     assert result.channel == "email"
     assert result.status == "accepted"
-    assert authorizer.actors == [_actor(role)]
     assert limiter.account_ids == [7]
     assert repository.created == [
         {
@@ -124,49 +118,28 @@ def test_t093g_allows_an_authorized_owner_or_staff_once_and_uses_current_contact
     assert whatsapp.notifications == ()
 
 
-def test_t093g_rejects_an_unauthorized_actor_before_consuming_the_limit() -> None:
-    authorizer = RecordingAuthorizer(allowed=False)
-    limiter = RecordingLimiter()
-    repository = FakeReminderRetryRepository(_context())
-
-    with pytest.raises(AdministrativeReminderRetryNotAuthorizedError):
-        _service(
-            repository=repository,
-            authorizer=authorizer,
-            limiter=limiter,
-        ).execute(actor=_actor("staff"), delivery_id=31)
-
-    assert limiter.account_ids == []
-    assert repository.locked_delivery_ids == []
-
-
 def test_t094_boundary_represents_an_unauthenticated_request() -> None:
-    authorizer = RecordingAuthorizer()
     limiter = RecordingLimiter()
     repository = FakeReminderRetryRepository(_context())
 
     with pytest.raises(AdministrativeReminderRetryNotAuthorizedError):
         _service(
             repository=repository,
-            authorizer=authorizer,
             limiter=limiter,
         ).execute(actor=None, delivery_id=31)  # type: ignore[arg-type]
 
-    assert authorizer.actors == []
     assert limiter.account_ids == []
     assert repository.locked_delivery_ids == []
     assert repository.created == []
 
 
 def test_t093g_rate_limit_is_consumed_once_before_retry_data_is_accessed() -> None:
-    authorizer = RecordingAuthorizer()
     limiter = RecordingLimiter(allowed=False)
     repository = FakeReminderRetryRepository(_context())
 
     with pytest.raises(AdministrativeAppointmentNotificationRateLimitError):
         _service(
             repository=repository,
-            authorizer=authorizer,
             limiter=limiter,
         ).execute(actor=_actor("owner"), delivery_id=31)
 
@@ -239,13 +212,11 @@ def test_t093g_accepts_the_exact_five_minute_retry_separation() -> None:
 def _service(
     *,
     repository: FakeReminderRetryRepository,
-    authorizer: RecordingAuthorizer | None = None,
     limiter: RecordingLimiter | None = None,
     email: EmailSimulator | None = None,
     whatsapp: WhatsAppSimulator | None = None,
 ) -> RetryFailedAppointmentReminder:
     return RetryFailedAppointmentReminder(
-        authorizer=authorizer or RecordingAuthorizer(),
         limiter=limiter or RecordingLimiter(),
         unit_of_work=FakeReminderRetryUnitOfWork(repository),
         dispatcher=NotificationDispatcher(
@@ -254,6 +225,7 @@ def _service(
             result_writer=RecordingResultWriter(),
         ),
         clock=FixedClock(NOW),
+        audit=RecordingAudit(),
     )
 
 

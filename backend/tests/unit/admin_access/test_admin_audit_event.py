@@ -33,13 +33,29 @@ def test_t016_accepts_an_identified_or_anonymous_minimum_event() -> None:
 
     assert identified.actor_account_id == 7
     assert anonymous.actor_account_id is None
-    assert "email" not in identified.__dataclass_fields__
-    assert "password" not in identified.__dataclass_fields__
+    assert set(identified.__dataclass_fields__) == {
+        "actor_account_id",
+        "action",
+        "result",
+        "occurred_at",
+        "target_reference",
+    }
+    assert "email" not in repr(identified)
+    assert "password" not in repr(identified)
 
 
 @pytest.mark.parametrize(
     "target_reference",
-    ("client@example.test", "phone:5551234567", "appointment:01", "Appointment:1"),
+    (
+        "client@example.test",
+        "phone:5551234567",
+        "appointment:01",
+        "Appointment:1",
+        "ip_address:192168001001",
+        "token:secretvalue",
+        "recovery_code:123456789012",
+        "appointment_private_code:123456",
+    ),
 )
 def test_t016_rejects_non_internal_or_private_target_references(
     target_reference: str,

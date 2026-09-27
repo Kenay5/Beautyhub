@@ -123,7 +123,8 @@ class RequestOwnAdministrativeEmailChange:
             self._record_audit(account_id, "failed")
             return "unavailable"
 
-        self._record_audit(account_id, "succeeded")
+        # The email is only reserved here; the audited change occurs after
+        # successful confirmation of the one-use link.
         return "reserved"
 
     def _record_audit(self, account_id: int, result: str) -> None:

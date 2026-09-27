@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 
 
 const ownerEmail = "synthetic.owner@example.test";
@@ -50,6 +50,15 @@ test("T042 completes owner invitation, delivery recovery, cancellation, expiry, 
     data: { outcome: "failed" },
   });
   await page.getByRole("button", { name: "Cerrar sesión" }).focus();
+  await page.keyboard.press("Tab");
+  const securityNavigation = page.getByRole("button", { name: "Mi seguridad", exact: true });
+  await expect(securityNavigation).toBeFocused();
+  await page.keyboard.press("Tab");
+  const historyNavigation = page.getByRole("button", { name: "Historial administrativo", exact: true });
+  await expect(historyNavigation).toBeFocused();
+  await page.keyboard.press("Tab");
+  const manageStaffButton = page.getByRole("button", { name: "Gestionar cuenta del personal" });
+  await expect(manageStaffButton).toBeFocused();
   await page.keyboard.press("Tab");
   const staffEmailInput = page.getByLabel("Correo del personal");
   await expect(staffEmailInput).toBeFocused();
@@ -298,6 +307,171 @@ test("T078 consumes a recovery code once and accepts each current TOTP period on
   expect(ownerState.activeRecoveryCodes).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("T080/T090 owner deactivates staff, staff permissions are denied, and reauthorization requires a new invitation", async ({
+  page,
+  browser,
+  request,
+}, testInfo: TestInfo) => {
+  await expect((await request.post("/__test__/staff-invitations/reset")).status()).toBe(204);
+  await page.goto("/admin/");
+  await page.getByLabel("Correo electrónico").fill(ownerEmail);
+  await page.getByLabel("Contraseña").fill(ownerPassword);
+  await page.getByRole("button", { name: "Usar un código de recuperación" }).click();
+  await page.getByLabel("Código de recuperación").fill(ownerRecoveryCode);
+  await page.getByRole("button", { name: "Iniciar sesión" }).click();
+  await expect(page.getByText("Sesión activa: propietario")).toBeVisible();
+
+  await page.getByLabel("Correo del personal").fill(staffEmail);
+  await page.getByRole("button", { name: "Enviar invitación" }).click();
+  await expect(page.getByText("La invitación está pendiente y el enlace fue enviado.")).toBeVisible();
+  const mail = await takeMail(request);
+  const token = extractToken(mail.content);
+  const accountId = await findAccount(request, staffEmail);
+
+  const staffContext = await browser.newContext();
+  const staffPage = await staffContext.newPage();
+  try {
+    expect(await openLink(staffPage, token)).toBe(200);
+    await staffPage.getByRole("button", { name: "Continuar" }).click();
+    await staffPage.getByLabel("Nueva contraseña").fill(staffPassword);
+    await staffPage.getByLabel("Confirmar contraseña").fill(staffPassword);
+    await staffPage.getByRole("button", { name: "Continuar" }).click();
+    await staffPage.getByRole("button", { name: "Mostrar clave manual" }).click();
+    const manualKey = (await staffPage.getByLabel("Clave manual de autenticación").innerText()).replaceAll(" ", "");
+    await staffPage.getByLabel("Código de 6 dígitos").fill(totp(manualKey));
+    await staffPage.getByRole("button", { name: "Activar cuenta" }).click();
+    const recoveryList = staffPage.getByRole("list", { name: "Códigos de recuperación" });
+    await expect(recoveryList).toBeVisible();
+    const staffRecoveryCode = await recoveryList.locator("code").first().innerText();
+    await staffPage.getByRole("button", { name: "Ya guardé mis códigos" }).click();
+    await expect(staffPage.getByRole("heading", { name: "Cuenta activada" })).toBeVisible();
+
+    await staffPage.goto("/admin/");
+    await staffPage.getByLabel("Correo electrónico").fill(staffEmail);
+    await staffPage.getByLabel("Contraseña").fill(staffPassword);
+    await staffPage.getByRole("button", { name: "Usar un código de recuperación" }).click();
+    await staffPage.getByLabel("Código de recuperación").fill(staffRecoveryCode);
+    await staffPage.getByRole("button", { name: "Iniciar sesión" }).click();
+    await expect(staffPage.getByText("Sesión activa: personal")).toBeVisible();
+    await expect(staffPage.getByRole("button", { name: "Historial administrativo" })).toHaveCount(0);
+    await expect(staffPage.getByRole("button", { name: "Gestionar cuenta del personal" })).toHaveCount(0);
+    await expect(staffPage.getByLabel("Correo del personal")).toHaveCount(0);
+    await expect(staffPage.locator("body")).not.toContainText(/código privado/i);
+    expect(await staffPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect((await new AxeBuilder({ page: staffPage }).analyze()).violations).toEqual([]);
+
+    const staffCsrfToken = await staffPage.evaluate(async () => {
+      const response = await fetch("/api/admin/sessions/current", { credentials: "same-origin" });
+      if (!response.ok) throw new Error("staff session context was unavailable");
+      const payload = await response.json() as { csrfToken: string };
+      return payload.csrfToken;
+    });
+    const staffDenials = await staffPage.evaluate(async (csrfToken) => {
+      const history = await fetch("/api/admin/history", {
+        credentials: "same-origin",
+        headers: { "x-admin-role": "owner", "x-admin-account-id": "1" },
+      });
+      const deactivation = await fetch("/api/admin/staff/deactivate", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+          "x-admin-role": "owner",
+          "x-admin-account-id": "1",
+        },
+        body: JSON.stringify({ role: "owner", accountId: 1 }),
+      });
+      return { history: history.status, deactivation: deactivation.status };
+    }, staffCsrfToken);
+    expect(staffDenials).toEqual({ history: 403, deactivation: 403 });
+
+    const staffViewportWidth = testInfo.project.use.viewport?.width;
+    if (staffViewportWidth === 320 || staffViewportWidth === 1280) {
+      await staffPage.screenshot({ path: testInfo.outputPath(`t090-personal-staff-${staffViewportWidth}.png`), fullPage: true });
+    }
+    expect((await loadState(request, accountId)).activeSessions).toBe(1);
+
+    await page.getByRole("button", { name: "Gestionar cuenta del personal" }).click();
+    await expect(page.getByRole("heading", { name: "Cuenta de personal" })).toBeVisible();
+    await expect(page.getByText("Cuenta activa")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Historial administrativo" })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/código privado/i);
+    const ownerViewportWidth = testInfo.project.use.viewport?.width;
+    if (ownerViewportWidth === 320 || ownerViewportWidth === 1280) {
+      await page.screenshot({ path: testInfo.outputPath(`t090-personal-owner-${ownerViewportWidth}.png`), fullPage: true });
+    }
+    await expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.getByRole("button", { name: "Desactivar cuenta" }).click();
+    const dialog = page.getByRole("dialog", { name: "¿Desactivar la cuenta?" });
+    await expect(dialog).toBeVisible();
+    if (testInfo.project.use.viewport && [320, 1280].includes(testInfo.project.use.viewport.width)) {
+      await page.screenshot({ path: testInfo.outputPath(`t080-deactivation-${testInfo.project.use.viewport.width}.png`) });
+    }
+    await expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.getByRole("button", { name: "Desactivar cuenta" }).last().click();
+    await expect(page.getByRole("status").filter({ hasText: "La cuenta fue desactivada" })).toBeVisible();
+
+    const currentSession = await staffPage.request.get("/api/admin/sessions/current");
+    expect(currentSession.status()).toBe(401);
+    const state = await loadState(request, accountId);
+    expect(state.status).toBe("deactivated");
+    expect(state.claimKinds).toEqual([]);
+    expect(state.factorStatus).toBe("invalidated");
+    expect(state.activeRecoveryCodes).toBe(0);
+    expect(state.activeSessions).toBe(0);
+
+    const unauthenticatedContext = await browser.newContext({
+      baseURL: "https://127.0.0.1:8443",
+      ignoreHTTPSErrors: true,
+    });
+    try {
+      const unauthenticatedHistory = await unauthenticatedContext.request.get("/api/admin/history");
+      expect(unauthenticatedHistory.status()).toBe(401);
+      expect(await unauthenticatedHistory.json()).toEqual({
+        detail: "Autenticación administrativa requerida.",
+      });
+    } finally {
+      await unauthenticatedContext.close();
+    }
+
+    await page.getByRole("button", { name: "Historial administrativo" }).click();
+    await expect(page.getByRole("heading", { name: "Historial administrativo" })).toBeVisible();
+    const deactivationRow = page.locator("tbody tr").filter({ hasText: "Desactivación de personal" }).first();
+    await expect(deactivationRow.getByRole("cell", { name: "Desactivación de personal", exact: true })).toBeVisible();
+    await expect(deactivationRow).toContainText(`admin_account:${accountId}`);
+    await expect(page.locator("body")).not.toContainText(/código privado|synthetic\.staff@example\.test/i);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    const historyViewportWidth = testInfo.project.use.viewport?.width;
+    if (historyViewportWidth === 320 || historyViewportWidth === 1280) {
+      await page.screenshot({ path: testInfo.outputPath(`t090-history-owner-${historyViewportWidth}.png`), fullPage: true });
+    }
+
+    await staffPage.goto("/admin/");
+    await staffPage.getByLabel("Correo electrónico").fill(staffEmail);
+    await staffPage.getByLabel("Contraseña").fill(staffPassword);
+    await staffPage.getByLabel("Código de 6 dígitos").fill(totp(manualKey));
+    await staffPage.getByRole("button", { name: "Iniciar sesión" }).click();
+    await expect(staffPage.getByRole("alert").filter({
+      hasText: "Las credenciales no son válidas. Revisa los datos e inténtalo de nuevo.",
+    })).toBeVisible();
+
+    await page.getByRole("button", { name: "Mi seguridad" }).click();
+    await expect(page.getByLabel("Correo del personal")).toBeVisible();
+    await page.getByLabel("Correo del personal").fill(staffEmail);
+    await page.getByRole("button", { name: "Enviar invitación" }).click();
+    const replacementMail = await takeMail(request);
+    expect(replacementMail.outcome).toBe("accepted");
+    const replacementAccountId = await findAccount(request, staffEmail);
+    expect(replacementAccountId).not.toBe(accountId);
+    expect((await loadState(request, accountId)).status).toBe("deactivated");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally {
+    await staffContext.close();
+  }
 });
 
 async function takeMail(request: APIRequestContext): Promise<Mail> {

@@ -9,6 +9,10 @@ from typing import Iterator
 import pytest
 
 from backend.app.application.clock import FixedClock
+from backend.app.application.admin_access.authorization import (
+    AdministrativeActor,
+    AdministrativeAuthorizationError,
+)
 from backend.app.application.prepare_notification_retry import (
     CurrentAppointmentContact,
     LockedFailedNotificationDelivery,
@@ -66,10 +70,24 @@ class FakeRetryUnitOfWork:
         yield self.repository
 
 
-def test_t093a_creates_a_distinct_linked_retry_for_the_current_contact() -> None:
+class RecordingAudit:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def record(self, **event: object) -> None:
+        self.events.append(event)
+
+
+@pytest.mark.parametrize("role", ("owner", "staff"))
+def test_t093a_owner_and_staff_retry_only_to_current_contact_without_code(
+    role: str,
+) -> None:
     repository = FakeRetryRepository()
 
-    result = _service(repository).execute(31)
+    result = _service(repository).execute(
+        actor=AdministrativeActor(account_id=7, role=role),  # type: ignore[arg-type]
+        delivery_id=31,
+    )
 
     assert result.delivery_id == 47
     assert result.previous_delivery_id == 31
@@ -86,13 +104,26 @@ def test_t093a_creates_a_distinct_linked_retry_for_the_current_contact() -> None
     ]
     assert repository.appointment_writes == 0
     assert "private" not in repr(result).lower()
+    assert not hasattr(result, "private_code")
+
+
+def test_t082_notification_retry_rejects_untrusted_actor_before_database_access() -> None:
+    repository = FakeRetryRepository()
+
+    with pytest.raises(AdministrativeAuthorizationError):
+        _service(repository).execute(actor=None, delivery_id=31)  # type: ignore[arg-type]
+
+    assert repository.created == []
+    assert repository.appointment_writes == 0
 
 
 def test_t093a_rejects_a_delivery_that_did_not_fail_without_writes() -> None:
     repository = FakeRetryRepository(status=ACCEPTED_DELIVERY_STATUS)
 
     with pytest.raises(NotificationRetryNotPermittedError):
-        _service(repository).execute(31)
+        _service(repository).execute(
+            actor=AdministrativeActor(account_id=7, role="owner"), delivery_id=31
+        )
 
     assert repository.created == []
     assert repository.appointment_writes == 0
@@ -110,7 +141,9 @@ def test_t093g_generic_retry_cannot_bypass_reminder_retry_limits() -> None:
     )
 
     with pytest.raises(NotificationRetryNotPermittedError):
-        _service(repository).execute(31)
+        _service(repository).execute(
+            actor=AdministrativeActor(account_id=7, role="staff"), delivery_id=31
+        )
 
     assert repository.created == []
 
@@ -119,4 +152,5 @@ def _service(repository: FakeRetryRepository) -> PrepareNotificationRetry:
     return PrepareNotificationRetry(
         unit_of_work=FakeRetryUnitOfWork(repository),
         clock=FixedClock(NOW),
+        audit=RecordingAudit(),
     )

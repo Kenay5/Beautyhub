@@ -71,7 +71,7 @@ def test_t072_valid_credentials_reserve_only_the_current_actor_address():
     assert harness.reservations[0]["candidate"].account_id == 7
     assert harness.reservations[0]["email"] == {"email": " New.Address@Example.test "}
     assert harness.reservations[0]["period_counter"] == 42
-    assert harness.audits[-1]["result"] == "succeeded"
+    assert harness.audits == []
     assert harness.failures == []
 
 

@@ -232,11 +232,19 @@ def _validator(connection) -> ValidateAdministrativeLogin:
     )
 
 
-def _login(connection, *, code: str | None = None, recovery_code: str | None = None, tokens=None):
+def _login(
+    connection,
+    *,
+    email: str = EMAIL,
+    password: str = PASSWORD,
+    code: str | None = None,
+    recovery_code: str | None = None,
+    tokens=None,
+):
     clock = FixedClock(NOW)
     validation = _validator(connection).validate(
-        email=EMAIL,
-        password=PASSWORD,
+        email=email,
+        password=password,
         totp_code=code,
         recovery_code=recovery_code,
     )
@@ -259,6 +267,80 @@ def _login(connection, *, code: str | None = None, recovery_code: str | None = N
         ),
         clock=clock,
     ).create(validation=validation)
+
+
+@pytest.mark.integration
+def test_t084_failed_known_and_unknown_logins_record_one_minimum_event_each(
+    migrated_engine: Engine,
+) -> None:
+    _seed_account(migrated_engine)
+    with migrated_engine.begin() as connection:
+        known = _login(
+            connection,
+            password="incorrect synthetic password",
+            code="123456",
+        )
+        unknown = _login(
+            connection,
+            email="missing.synthetic@example.test",
+            password="incorrect synthetic password",
+            code="123456",
+        )
+
+    with migrated_engine.connect() as connection:
+        events = tuple(
+            connection.execute(
+                select(
+                    AdminAuditEvent.actor_account_id,
+                    AdminAuditEvent.action,
+                    AdminAuditEvent.result,
+                    AdminAuditEvent.target_reference,
+                ).order_by(AdminAuditEvent.admin_audit_event_id)
+            )
+        )
+        sessions = connection.execute(
+            select(func.count()).select_from(AdminSession)
+        ).scalar_one()
+        failures = connection.execute(
+            select(func.count()).select_from(AdminCredentialFailureEvent)
+        ).scalar_one()
+
+    assert not known.accepted and not unknown.accepted
+    assert events == (
+        (1, "login", "failed", None),
+        (None, "login", "failed", None),
+    )
+    assert sessions == 0
+    assert failures == 1
+
+
+@pytest.mark.integration
+def test_t084_login_audit_and_session_share_the_caller_transaction(
+    migrated_engine: Engine,
+) -> None:
+    _seed_account(migrated_engine)
+    with pytest.raises(RuntimeError, match="rollback synthetic login"):
+        with migrated_engine.begin() as connection:
+            outcome = _login(
+                connection,
+                code=pyotp.TOTP(SECRET.decode("ascii")).at(NOW),
+                tokens=SequenceSecretGenerator((SESSION_TOKEN, CSRF_TOKEN)),
+            )
+            assert outcome.accepted
+            raise RuntimeError("rollback synthetic login")
+
+    with migrated_engine.connect() as connection:
+        sessions = connection.execute(
+            select(func.count()).select_from(AdminSession)
+        ).scalar_one()
+        events = connection.execute(
+            select(func.count()).select_from(AdminAuditEvent)
+        ).scalar_one()
+        factor_uses = connection.execute(
+            select(func.count()).select_from(TotpPeriodUse)
+        ).scalar_one()
+
+    assert (sessions, events, factor_uses) == (0, 0, 0)
 
 
 @pytest.mark.integration

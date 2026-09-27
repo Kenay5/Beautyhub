@@ -11,6 +11,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Connection, Engine, inspect, text
+from sqlalchemy.exc import DBAPIError
 
 from backend.app.infrastructure.persistence.database import create_postgres_engine
 from backend.app.infrastructure.settings import load_test_database_url
@@ -78,6 +79,47 @@ def test_t019_alembic_keeps_existing_application_loggers_enabled(
         assert application_logger.disabled is False
     finally:
         application_logger.disabled = previous_disabled
+
+
+@pytest.mark.integration
+def test_t085_security_migration_downgrade_fails_closed(
+    postgres_engine: Engine,
+) -> None:
+    _upgrade_to_head(postgres_engine)
+    _downgrade(postgres_engine, "20260926_28")
+    try:
+        with postgres_engine.connect() as connection:
+            transaction = connection.begin()
+            try:
+                event_id = connection.execute(
+                    text(
+                        "INSERT INTO admin_audit_events (action, result, occurred_at) "
+                        "VALUES ('login', 'failed', :occurred_at) "
+                        "RETURNING admin_audit_event_id"
+                    ),
+                    {"occurred_at": FIXTURE_TIME},
+                ).scalar_one()
+                connection.execute(
+                    text(
+                        "SELECT set_config("
+                        "'beautyhub.administrative_history_retention_delete', "
+                        "'authorized', true)"
+                    )
+                )
+                with pytest.raises(DBAPIError):
+                    with connection.begin_nested():
+                        connection.execute(
+                            text(
+                                "DELETE FROM admin_audit_events "
+                                "WHERE admin_audit_event_id = :event_id "
+                                "/* purge_expired_administrative_history_event_batch */"
+                            ),
+                            {"event_id": event_id},
+                        )
+            finally:
+                transaction.rollback()
+    finally:
+        _upgrade_to_head(postgres_engine)
 
 
 def _alembic_config(connection: Connection) -> Config:

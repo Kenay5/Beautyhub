@@ -345,19 +345,19 @@
 
 ## 7. Personal, autorización e historial
 
-- [ ] **T080 — Desactivar y reemplazar al personal**
+- [x] **T080 — Desactivar y reemplazar al personal**
   - **RF/criterios:** RF-01-CA-05; RF-09-CA-01, CA-05 y CA-06; RF-10-CA-01 y CA-04.
   - **Hecho cuando:** solo el propietario desactiva cuenta, sesiones, enlaces, TOTP y códigos atómicamente, y una autorización futura exige cuenta nueva.
 
-- [ ] **T081 — Conservar y retirar datos del personal desactivado**
+- [x] **T081 — Conservar y retirar datos del personal desactivado**
   - **RF/criterios:** RF-09-CA-02 y CA-03; RF-11-CA-06 y CA-07.
   - **Hecho cuando:** historial conserva referencia interna y al aniversario de 12 meses del último evento se retiran los datos identificables previstos.
 
-- [ ] **T082 — Construir contexto y política de autorización**
+- [x] **T082 — Construir contexto y política de autorización**
   - **RF/criterios:** RF-01-CA-06; RF-04-CA-07; RF-09-CA-04; RF-10-CA-01 a CA-05.
   - **Hecho cuando:** backend decide con cuenta, rol y sesión; propietario y personal pueden reintentar notificaciones fallidas de citas solo a contactos registrados y sin ver el código, el personal conserva únicamente su alcance operativo y nadie administra otra cuenta sin permiso.
 
-- [ ] **T083 — Denegar sin efectos parciales ni confianza en React**
+- [x] **T083 — Denegar sin efectos parciales ni confianza en React**
   - **RF/criterios:** RF-10-CA-05; RF-11-CA-08.
   - **Hecho cuando:** solicitud manual o interfaz alterada recibe 401/403, no cambia negocio y registra la denegación mínima si existe actor.
 
@@ -365,15 +365,15 @@
   - **RF/criterios:** RF-03-CA-08; RF-11-CA-01, CA-08 y CA-09.
   - **Hecho cuando:** identidad, seguridad, mutaciones de la spec 001 y denegaciones generan eventos; consultas ordinarias no los generan.
 
-- [ ] **T085 — Minimizar e impedir modificaciones del historial**
+- [x] **T085 — Minimizar e impedir modificaciones del historial**
   - **RF/criterios:** RF-11-CA-02 y CA-05.
   - **Hecho cuando:** no hay secretos, IP ni datos de clientas, y permisos ordinarios no pueden actualizar o borrar fuera de retención.
 
-- [ ] **T086 — Consultar historial solo como propietario**
+- [x] **T086 — Consultar historial solo como propietario**
   - **RF/criterios:** RF-11-CA-03 y CA-04; RF-10-CA-04.
   - **Hecho cuando:** propietario filtra por cuenta, tipo y periodo en la zona oficial, mientras personal no puede listar ni consultar eventos.
 
-- [ ] **T087 — Aplicar conservación exacta de 12 meses**
+- [x] **T087 — Aplicar conservación exacta de 12 meses**
   - **RF/criterios:** RF-09-CA-03; RF-11-CA-06 y CA-07.
   - **Hecho cuando:** el proceso idempotente conserva hasta el aniversario calendario exacto y retira después eventos y datos identificables vencidos.
 

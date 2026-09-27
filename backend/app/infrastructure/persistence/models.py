@@ -600,6 +600,32 @@ class AdminAccount(Base):
     )
 
 
+class DeactivatedStaffIdentity(Base):
+    """Encrypted staff email retained only for the approved history period."""
+
+    __tablename__ = "deactivated_staff_identities"
+    __table_args__ = (
+        CheckConstraint(
+            "octet_length(email_ciphertext) > 0",
+            name="ck_deactivated_staff_identities_ciphertext_nonempty",
+        ),
+        CheckConstraint(
+            "char_length(btrim(key_version)) > 0",
+            name="ck_deactivated_staff_identities_key_version_nonempty",
+        ),
+    )
+
+    admin_account_id: Mapped[int] = mapped_column(
+        ForeignKey("admin_accounts.admin_account_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    email_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    identifiable_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class OwnerBootstrapState(Base):
     """The one irreversible administrative owner bootstrap process."""
 

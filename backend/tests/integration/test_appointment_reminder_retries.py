@@ -214,14 +214,14 @@ def test_t093g_concurrent_requests_create_at_most_one_retry_for_a_channel(
         _cleanup(migrated_engine, fixture)
 
 
-class AllowAdministrativeRetry:
-    def ensure_allowed(self, actor: AdministrativeReminderRetryActor) -> None:
-        assert actor.role in {"owner", "staff"}
-
-
 class AllowAppointmentNotificationActions:
     def ensure_allowed(self, *, account_id: int) -> None:
         assert account_id > 0
+
+
+class RecordingAuthorizationAudit:
+    def record(self, **event: object) -> None:
+        pass
 
 
 def _retry_service(
@@ -231,7 +231,6 @@ def _retry_service(
     email: EmailSimulator | None = None,
 ) -> RetryFailedAppointmentReminder:
     return RetryFailedAppointmentReminder(
-        authorizer=AllowAdministrativeRetry(),
         limiter=AllowAppointmentNotificationActions(),
         unit_of_work=PostgresAppointmentReminderRetryUnitOfWork(engine),
         dispatcher=NotificationDispatcher(
@@ -240,6 +239,7 @@ def _retry_service(
             result_writer=PostgresNotificationDeliveryResultWriter(engine),
         ),
         clock=FixedClock(fixture["now"]),  # type: ignore[arg-type]
+        audit=RecordingAuthorizationAudit(),
     )
 
 

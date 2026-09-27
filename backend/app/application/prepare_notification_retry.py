@@ -7,6 +7,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
+from backend.app.application.admin_access.authorization import (
+    AdministrativeActor,
+    AuthorizationDenialRecorder,
+    require_capability,
+)
 from backend.app.application.clock import Clock
 from backend.app.application.transactional_notifications import NotificationChannel
 from backend.app.domain.notification_delivery import (
@@ -96,13 +101,22 @@ class PrepareNotificationRetry:
         *,
         unit_of_work: NotificationRetryUnitOfWork,
         clock: Clock,
+        audit: AuthorizationDenialRecorder,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._clock = clock
+        self._audit = audit
 
-    def execute(self, delivery_id: int) -> PreparedNotificationRetry:
+    def execute(
+        self, *, actor: AdministrativeActor, delivery_id: int
+    ) -> PreparedNotificationRetry:
         """Persist a distinct, linked retry addressed to the current contact."""
 
+        require_capability(
+            actor=actor,
+            capability="retry_appointment_notifications",
+            audit=self._audit,
+        )
         _require_delivery_id(delivery_id)
         attempted_at = self._clock.now()
         with self._unit_of_work.transaction() as repository:

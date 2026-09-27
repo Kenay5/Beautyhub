@@ -5,6 +5,7 @@ import { PasswordChangePanel } from "./PasswordChangePanel";
 import { OwnEmailChangePanel } from "./OwnEmailChangePanel";
 import { RecoveryCodeRegenerationPanel } from "./RecoveryCodeRegenerationPanel";
 import { TotpReplacementPanel } from "./TotpReplacementPanel";
+import { AdministrativeHistoryPanel } from "./AdministrativeHistoryPanel";
 import {
   AdministrativeSession,
   AdministrativeSessionUnavailableError,
@@ -277,6 +278,7 @@ function AuthenticatedAdministration({
   onCodesRegenerated: (codes: string[]) => void;
 }) {
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<"security" | "history">("security");
 
   async function logout() {
     try {
@@ -303,34 +305,58 @@ function AuthenticatedAdministration({
       </header>
       {logoutError ? <p role="alert">{logoutError}</p> : null}
       {session.role === "owner" ? (
-        <StaffInvitationPanel
-          csrfToken={session.csrfToken}
-          onSessionUnavailable={onSessionUnavailable}
-        />
+        <nav className="admin-area-navigation" aria-label="Secciones administrativas">
+          <button
+            type="button"
+            aria-pressed={activeView === "security"}
+            onClick={() => setActiveView("security")}
+          >
+            Mi seguridad
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeView === "history"}
+            onClick={() => setActiveView("history")}
+          >
+            Historial administrativo
+          </button>
+        </nav>
+      ) : null}
+      {session.role === "owner" && activeView === "history" ? (
+        <AdministrativeHistoryPanel onSessionUnavailable={onSessionUnavailable} />
       ) : (
-        <SessionMessage message="Tu sesión de personal está activa." />
+        <>
+          {session.role === "owner" ? (
+            <StaffInvitationPanel
+              csrfToken={session.csrfToken}
+              onSessionUnavailable={onSessionUnavailable}
+            />
+          ) : (
+            <SessionMessage message="Tu sesión de personal está activa." />
+          )}
+          <div className="staff-access-page">
+            <OwnEmailChangePanel
+              csrfToken={session.csrfToken}
+              onSessionUnavailable={onSessionUnavailable}
+            />
+            <PasswordChangePanel
+              csrfToken={session.csrfToken}
+              onSessionUnavailable={onSessionUnavailable}
+              onPasswordChanged={onPasswordChanged}
+            />
+            <RecoveryCodeRegenerationPanel
+              csrfToken={session.csrfToken}
+              onSessionUnavailable={onSessionUnavailable}
+              onRegenerated={onCodesRegenerated}
+            />
+            <TotpReplacementPanel
+              csrfToken={session.csrfToken}
+              onSessionUnavailable={onSessionUnavailable}
+              onReplaced={onCodesRegenerated}
+            />
+          </div>
+        </>
       )}
-      <div className="staff-access-page">
-        <OwnEmailChangePanel
-          csrfToken={session.csrfToken}
-          onSessionUnavailable={onSessionUnavailable}
-        />
-        <PasswordChangePanel
-          csrfToken={session.csrfToken}
-          onSessionUnavailable={onSessionUnavailable}
-          onPasswordChanged={onPasswordChanged}
-        />
-        <RecoveryCodeRegenerationPanel
-          csrfToken={session.csrfToken}
-          onSessionUnavailable={onSessionUnavailable}
-          onRegenerated={onCodesRegenerated}
-        />
-        <TotpReplacementPanel
-          csrfToken={session.csrfToken}
-          onSessionUnavailable={onSessionUnavailable}
-          onReplaced={onCodesRegenerated}
-        />
-      </div>
     </>
   );
 }

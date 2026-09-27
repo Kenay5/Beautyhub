@@ -18,6 +18,7 @@ from alembic.config import Config
 from sqlalchemy import Engine, delete, func, insert, select
 
 from backend.app.application.clock import FixedClock
+from backend.app.application.admin_access.authorization import AdministrativeActor
 from backend.app.application.confirm_appointment_with_notifications import (
     ConfirmAppointmentWithNotifications,
 )
@@ -58,6 +59,11 @@ from backend.app.infrastructure.persistence.models import (
 from backend.app.infrastructure.settings import load_test_database_url
 from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.whatsapp_simulator import WhatsAppSimulator
+
+
+class _RecordingAuthorizationAudit:
+    def record(self, **event: object) -> None:
+        pass
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -527,7 +533,11 @@ def test_t093a_creates_a_linked_retry_at_the_current_contact_without_changing_ap
         retry = PrepareNotificationRetry(
             unit_of_work=PostgresNotificationRetryUnitOfWork(migrated_engine),
             clock=FixedClock(fixture["now"]),  # type: ignore[arg-type]
-        ).execute(original_delivery_id)
+            audit=_RecordingAuthorizationAudit(),
+        ).execute(
+            actor=AdministrativeActor(account_id=1, role="owner"),
+            delivery_id=original_delivery_id,
+        )
 
         with migrated_engine.connect() as connection:
             after = connection.execute(

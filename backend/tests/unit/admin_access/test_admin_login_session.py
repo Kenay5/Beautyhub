@@ -114,9 +114,13 @@ def test_t047_success_creates_protected_values_and_uses_the_stored_real_role() -
     assert CSRF_TOKEN.hex() not in repr(outcome)
 
 
-def test_t047_rejection_does_not_generate_or_store_a_session() -> None:
+@pytest.mark.parametrize("rejected_account_id", (7, None), ids=("known", "unknown"))
+def test_t084_rejected_login_is_audited_without_creating_a_session(
+    rejected_account_id: int | None,
+) -> None:
     validation = AdministrativeLoginValidationOutcome(
-        rejection=INVALID_LOGIN_REJECTION
+        rejection=INVALID_LOGIN_REJECTION,
+        rejected_account_id=rejected_account_id,
     )
     credentials = CredentialCompleter(
         AdministrativeLoginCredentialOutcome(rejection=INVALID_LOGIN_REJECTION)
@@ -134,7 +138,13 @@ def test_t047_rejection_does_not_generate_or_store_a_session() -> None:
     assert not outcome.accepted
     assert outcome.rejection == INVALID_LOGIN_REJECTION
     assert store.calls == []
-    assert audit.calls == []
+    assert audit.calls == [
+        {
+            "actor_account_id": rejected_account_id,
+            "action": "login",
+            "result": "failed",
+        }
+    ]
 
 
 def test_t048_equal_session_and_csrf_values_fail_before_persistence() -> None:

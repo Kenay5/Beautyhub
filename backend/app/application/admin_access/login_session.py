@@ -81,7 +81,7 @@ class AdministrativeLoginAuditRecorder(Protocol):
         *,
         actor_account_id: int | None,
         action: Literal["login"],
-        result: Literal["succeeded"],
+        result: Literal["succeeded", "failed"],
         target_reference: str | None = None,
     ) -> None: ...
 
@@ -113,6 +113,14 @@ class CreateAdministrativeLoginSession:
     ) -> AdministrativeLoginSessionOutcome:
         credentials = self._credentials.complete(validation=validation)
         if not credentials.accepted or credentials.account_id is None:
+            failed_account_id = validation.rejected_account_id
+            if failed_account_id is None and validation.validated is not None:
+                failed_account_id = validation.validated.account_id
+            self._audit.record(
+                actor_account_id=failed_account_id,
+                action="login",
+                result="failed",
+            )
             return AdministrativeLoginSessionOutcome(
                 rejection=credentials.rejection or INVALID_LOGIN_REJECTION
             )

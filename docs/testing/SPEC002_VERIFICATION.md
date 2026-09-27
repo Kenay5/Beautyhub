@@ -42,3 +42,31 @@ resultado positivo.
   llamadas de red.
 - Una verificación solo cuenta como pasada cuando su comando se ejecutó y su
   salida no contiene fallos.
+
+## Estado parcial de T090
+
+Verificación del 2026-09-26: el recorrido real de PostgreSQL para desactivar
+personal, invalidar su acceso y factores, denegar permisos de personal,
+consultar el evento como propietario y emitir una invitación que crea una
+cuenta nueva pasó en Chromium y WebKit a 320, 390, 768 y 1280 px (8/8). El
+journey de historial owner-only/personal, filtros, detalle accesible y
+denegación pasó en la misma matriz (16/16). No se observó exposición del
+código privado ni desbordamiento horizontal; los textos visibles están en
+español.
+
+T090 permanece pendiente porque no existe una ruta HTTP administrativa real
+para reintentar una notificación fallida de cita y tampoco una pantalla de
+agenda/detalle desde la que seleccionar esa entrega. No se simuló ese recorrido.
+La dependencia de Spec001 que debe aportar el contrato/ruta es T118A; la
+selección y acción visibles requieren T119/T119A y T122B. Después de que esas
+tareas proporcionen el flujo integrado, T090 debe añadir el journey real de
+reintento, verificando elegibilidad, contacto registrado, autorización por
+rol y ausencia de exposición del código privado, y volver a ejecutar su matriz
+Chromium/WebKit en los cuatro anchos.
+
+La inspección visual explícita a 320 y 1280 px encontró pantallas legibles,
+sin overflow horizontal, y controles de historial utilizables con tabla
+desplazable en móvil. La pantalla actual de seguridad agrupa más formularios y
+es más extensa que el mockup `personal_y_seguridad.png`; el historial conserva
+la jerarquía y tratamiento visual aprobados de `historial_administrativo.png`.
+Esta tarea fue de verificación, por lo que no se rediseñaron pantallas.

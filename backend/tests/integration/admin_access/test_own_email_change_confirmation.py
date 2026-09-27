@@ -123,7 +123,7 @@ def test_t075_success_promotes_claim_consumes_link_closes_session_and_notifies_e
         )).scalars().all() == ["invalidated"]
         assert connection.execute(select(AdminAuditEvent.result).where(
             AdminAuditEvent.action == "email_change"
-        ).order_by(AdminAuditEvent.admin_audit_event_id)).scalars().all() == ["succeeded", "succeeded"]
+        ).order_by(AdminAuditEvent.admin_audit_event_id)).scalars().all() == ["succeeded"]
         assert connection.execute(select(
             SecurityNotificationDelivery.template, SecurityNotificationDelivery.status
         ).where(SecurityNotificationDelivery.event == "email_changed").order_by(
@@ -290,7 +290,7 @@ def test_t075_transaction_failure_rolls_back_claim_link_session_audit_and_notice
         )).scalars().all() == ["active"]
         assert connection.execute(select(AdminAuditEvent.result).where(
             AdminAuditEvent.action == "email_change"
-        )).scalars().all() == ["succeeded"]
+        )).scalars().all() == []
         assert connection.execute(select(SecurityNotificationDelivery.security_notification_delivery_id).where(
             SecurityNotificationDelivery.event == "email_changed"
         )).scalars().all() == []

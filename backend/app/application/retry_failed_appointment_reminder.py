@@ -6,8 +6,14 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Literal, Protocol, TypeAlias
+from typing import Protocol
 
+from backend.app.application.admin_access.authorization import (
+    AdministrativeActor,
+    AdministrativeAuthorizationError,
+    AuthorizationDenialRecorder,
+    require_capability,
+)
 from backend.app.application.clock import Clock
 from backend.app.application.dispatch_notifications import (
     DispatchedNotificationDelivery,
@@ -29,10 +35,10 @@ from backend.app.domain.time import normalize_instant
 
 MAXIMUM_REMINDER_RETRIES = 3
 MINIMUM_REMINDER_RETRY_INTERVAL = timedelta(minutes=5)
-AdministrativeReminderRetryRole: TypeAlias = Literal["owner", "staff"]
+AdministrativeReminderRetryActor = AdministrativeActor
 
 
-class AdministrativeReminderRetryNotAuthorizedError(PermissionError):
+class AdministrativeReminderRetryNotAuthorizedError(AdministrativeAuthorizationError):
     """Raised when the administrative session cannot retry appointment notices."""
 
 
@@ -42,14 +48,6 @@ class AdministrativeAppointmentNotificationRateLimitError(ValueError):
 
 class AppointmentReminderRetryNotPermittedError(ValueError):
     """Raised when a reminder delivery cannot receive another manual retry."""
-
-
-@dataclass(frozen=True)
-class AdministrativeReminderRetryActor:
-    """Verified administrative identity supplied by the future session boundary."""
-
-    account_id: int
-    role: AdministrativeReminderRetryRole
 
 
 @dataclass(frozen=True)
@@ -87,13 +85,6 @@ class PreparedAppointmentReminderRetry:
     reminder_id: int
     channel: NotificationChannel
     status: NotificationDeliveryStatus
-
-
-class AdministrativeReminderRetryAuthorizer(Protocol):
-    """Authorize only a verified owner or staff session for this capability."""
-
-    def ensure_allowed(self, actor: AdministrativeReminderRetryActor) -> None:
-        """Raise a permission error without starting a retry when denied."""
 
 
 class AdministrativeAppointmentNotificationLimiter(Protocol):
@@ -140,29 +131,37 @@ class RetryFailedAppointmentReminder:
     def __init__(
         self,
         *,
-        authorizer: AdministrativeReminderRetryAuthorizer,
         limiter: AdministrativeAppointmentNotificationLimiter,
         unit_of_work: AppointmentReminderRetryUnitOfWork,
         dispatcher: NotificationDispatcher,
         clock: Clock,
+        audit: AuthorizationDenialRecorder,
     ) -> None:
-        self._authorizer = authorizer
         self._limiter = limiter
         self._unit_of_work = unit_of_work
         self._dispatcher = dispatcher
         self._clock = clock
+        self._audit = audit
 
     def execute(
         self,
         *,
-        actor: AdministrativeReminderRetryActor,
+        actor: AdministrativeActor,
         delivery_id: int,
     ) -> PreparedAppointmentReminderRetry:
         """Authorize, reserve one rate-limit action, commit, then dispatch once."""
 
-        _require_actor(actor)
+        try:
+            require_capability(
+                actor=actor,
+                capability="retry_appointment_notifications",
+                audit=self._audit,
+            )
+        except AdministrativeAuthorizationError as error:
+            raise AdministrativeReminderRetryNotAuthorizedError(
+                "administrative reminder retry is not authorized."
+            ) from error
         _require_delivery_id(delivery_id)
-        self._authorizer.ensure_allowed(actor)
         self._limiter.ensure_allowed(account_id=actor.account_id)
 
         attempted_at = normalize_instant(self._clock.now())
@@ -254,19 +253,6 @@ def _validate_retry_context(
     ):
         raise AppointmentReminderRetryNotPermittedError(
             "appointment reminder retry is not permitted."
-        )
-
-
-def _require_actor(actor: AdministrativeReminderRetryActor) -> None:
-    if (
-        not isinstance(actor, AdministrativeReminderRetryActor)
-        or isinstance(actor.account_id, bool)
-        or not isinstance(actor.account_id, int)
-        or actor.account_id <= 0
-        or actor.role not in {"owner", "staff"}
-    ):
-        raise AdministrativeReminderRetryNotAuthorizedError(
-            "administrative reminder retry is not authorized."
         )
 
 

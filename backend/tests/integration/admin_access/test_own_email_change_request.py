@@ -356,7 +356,7 @@ def test_t073_replaces_previous_per_account_reservation_without_changing_current
         assert connection.execute(select(TotpPeriodUse.totp_period_use_id)).scalars().all()
         assert connection.execute(
             select(AdminAuditEvent.result).where(AdminAuditEvent.action == "email_change")
-        ).scalars().all() == ["succeeded"]
+        ).scalars().all() == []
 
 
 @pytest.mark.integration

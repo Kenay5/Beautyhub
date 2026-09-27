@@ -74,6 +74,25 @@ def test_t053_valid_cookie_returns_only_revalidated_browser_context() -> None:
     assert _encoded(SESSION_TOKEN) not in response.text
 
 
+def test_t082_client_cannot_choose_the_authenticated_identity_or_role() -> None:
+    loader = ContextLoader(available=True)
+    with _client(loader) as client:
+        response = client.get(
+            "/api/admin/sessions/current",
+            params={"accountId": 99, "role": "staff"},
+            headers={
+                "cookie": f"{ADMINISTRATIVE_SESSION_COOKIE}={_encoded(SESSION_TOKEN)}",
+                "x-admin-account-id": "99",
+                "x-admin-role": "staff",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["accountId"] == 7
+    assert response.json()["role"] == "owner"
+    assert "99" not in response.text
+
+
 @pytest.mark.parametrize(
     "cookie",
     [
