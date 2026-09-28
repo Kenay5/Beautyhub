@@ -8,10 +8,14 @@ from fastapi.testclient import TestClient
 from backend.app.application.admin_access.login_session import (
     AdministrativeLoginSessionOutcome,
 )
+from backend.app.application.public_request_limit import AllowPublicRequests
 from backend.app.web.admin_auth.login import (
     ADMINISTRATIVE_SESSION_COOKIE,
     get_administrative_login,
     router,
+)
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
 )
 
 
@@ -33,6 +37,9 @@ def _client(login: LoginOperation) -> TestClient:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_administrative_login] = lambda: login
+    app.dependency_overrides[get_public_authentication_request_limiter] = (
+        AllowPublicRequests
+    )
     return TestClient(app)
 
 

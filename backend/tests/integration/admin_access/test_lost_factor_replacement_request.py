@@ -13,9 +13,10 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, insert, select, text, update
+from sqlalchemy import Engine, func, insert, select, text, update
 
 from backend.app.application.entropy import SystemSecretGenerator
+from backend.app.application.public_request_limit import AllowPublicRequests
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
     NotificationSendResult,
@@ -29,11 +30,16 @@ from backend.app.infrastructure.persistence.models import (
     AdminEmailClaim,
     RecoveryCode,
     SecurityLink,
+    RateLimitEvent,
     TotpFactor,
 )
 from backend.app.infrastructure.security.admin_email_protection import AdministrativeEmailProtector
 from backend.app.infrastructure.security.administrative_password_hashing import AdministrativePasswordHasher
 from backend.app.infrastructure.security.cryptography_key_ring import CryptographyKeyRing
+from backend.app.infrastructure.security.administrative_rate_limit_subject import (
+    AdministrativeRateLimitSubjectProtector,
+)
+from backend.app.domain.authentication.rate_limit import SECURITY_MESSAGE_ACTION_LIMIT
 from backend.app.infrastructure.security.security_link_protection import SecurityLinkProtector
 from backend.app.infrastructure.settings import (
     load_cryptography_key_configuration,
@@ -56,6 +62,9 @@ from backend.app.web.admin_auth.password_recovery_request import (
 )
 from backend.app.web.admin_auth.security_link_transport import decode_security_link_token
 from backend.app.web.admin_security_headers import register_administrative_security_headers
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+)
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -155,6 +164,9 @@ def _app(engine: Engine, sender: RecordingEmailSender) -> FastAPI:
     app.dependency_overrides[get_lost_factor_replacement_request_operations] = lambda: PostgresLostFactorReplacementRequestOperations(
         engine=engine, email_sender=sender
     )
+    app.dependency_overrides[get_public_authentication_request_limiter] = (
+        AllowPublicRequests
+    )
     return app
 
 
@@ -166,6 +178,9 @@ def _password_recovery_chain_app(engine: Engine, sender: RecordingEmailSender) -
     register_administrative_security_headers(app)
     app.dependency_overrides[get_password_recovery_operations] = lambda: PostgresPasswordRecoveryOperations(
         engine=engine, email_sender=sender
+    )
+    app.dependency_overrides[get_public_authentication_request_limiter] = (
+        AllowPublicRequests
     )
     app.dependency_overrides[get_password_recovery_completion_operations] = lambda: _PostgresPasswordRecoveryCompletionOperation(
         engine=engine, email_sender=sender
@@ -430,3 +445,50 @@ def test_t071_password_recovery_cannot_chain_into_lost_factor_replacement_withou
                 RecoveryCode.admin_account_id == account_id
             )
         ).all() == []
+
+
+@pytest.mark.integration
+def test_t093_password_recovery_and_lost_factor_share_one_account_message_budget(
+    migrated_engine: Engine,
+) -> None:
+    account_id = _seed_account(migrated_engine)
+    sender = RecordingEmailSender()
+    app = _password_recovery_chain_app(migrated_engine, sender)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        for _ in range(5):
+            recovery = client.post(
+                "/api/admin/password-recovery", json={"email": EMAIL}
+            )
+            lost_factor = _request(client)
+            assert recovery.status_code == lost_factor.status_code == 202
+            assert recovery.json() == {
+                "message": "Si existe una cuenta activa con ese correo, recibirás instrucciones para recuperar tu contraseña."
+            }
+            assert lost_factor.json() == {"message": GENERIC_MESSAGE}
+
+        assert len(sender.notifications) == 10
+        eleventh = _request(client)
+
+    subject = AdministrativeRateLimitSubjectProtector(
+        key_ring=CryptographyKeyRing(load_cryptography_key_configuration())
+    ).fingerprint_account(account_id)
+    with migrated_engine.connect() as connection:
+        count = connection.execute(
+            select(func.count())
+            .select_from(RateLimitEvent)
+            .where(
+                RateLimitEvent.category == SECURITY_MESSAGE_ACTION_LIMIT.category,
+                RateLimitEvent.subject_fingerprint == subject,
+            )
+        ).scalar_one()
+        failures = connection.execute(
+            select(func.count())
+            .select_from(AdminCredentialFailureEvent)
+            .where(AdminCredentialFailureEvent.admin_account_id == account_id)
+        ).scalar_one()
+
+    assert eleventh.status_code == 202
+    assert eleventh.json() == {"message": GENERIC_MESSAGE}
+    assert len(sender.notifications) == 10
+    assert count == 10
+    assert failures == 0

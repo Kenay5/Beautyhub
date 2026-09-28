@@ -93,6 +93,21 @@ class PostgresPendingSecurityStateStore(PendingSecurityStateStore):
         if purpose == "email_change":
             self._release_reservation(account_id=account_id)
 
+    def discard_for_failed_link(
+        self, *, account_id: int, purpose: SecurityLinkPurpose, current_time: datetime
+    ) -> None:
+        """Remove only pending setup/reservation belonging to a failed delivery."""
+
+        self._lock_account(account_id)
+        self._discard_setup(
+            account_id=account_id,
+            purpose=purpose,
+            status="invalidated",
+            current_time=current_time,
+        )
+        if purpose == "email_change":
+            self._release_reservation(account_id=account_id)
+
     def discard_after_completed_security_change(
         self, *, account_id: int, current_time: datetime
     ) -> None:

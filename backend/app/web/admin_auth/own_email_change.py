@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
 from typing import Annotated, Literal, Protocol
 
@@ -15,6 +14,7 @@ from backend.app.application.admin_access.account_security import (
     EnsureAdministrativeCredentialCheck,
     RecordAdministrativeCredentialFailure,
     RecordProtectedAdministrativeCredentialFailure,
+    SecurityNotificationDispatch,
 )
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.authorization import AdministrativeActor
@@ -27,9 +27,9 @@ from backend.app.application.admin_access.security_notification_deliveries impor
 )
 from backend.app.application.clock import Clock, SystemClock
 from backend.app.application.entropy import SecretGenerator, SystemSecretGenerator
+from backend.app.application.security_link_delivery import send_security_link_notification
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
-    NotificationSendResult,
     OutboundNotification,
     TransactionalNotificationPort,
 )
@@ -82,15 +82,17 @@ from backend.app.infrastructure.settings import (
 from backend.app.web.admin_auth.mutation_protection import (
     require_administrative_mutation_protection,
 )
-from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_authenticated_security_message_actor,
+)
 from backend.app.web.admin_auth.security_link_transport import security_link_fragment
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 router = APIRouter(prefix="/api/admin/account/email-change", tags=["admin-email-change"])
 _CREDENTIAL_DETAIL = "No fue posible comprobar las credenciales."
 _UNAVAILABLE_DETAIL = "No fue posible reservar el correo solicitado."
 _SECURITY_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
-_LOGGER = logging.getLogger(__name__)
 
 
 class OwnEmailChangeRequestBody(BaseModel):
@@ -106,7 +108,7 @@ class OwnEmailChangeRequestBody(BaseModel):
 class OwnEmailChangeResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    delivery_status: Literal["accepted", "failed"] = Field(
+    delivery_status: Literal["accepted", "failed", "uncertain"] = Field(
         serialization_alias="deliveryStatus"
     )
     detail: str
@@ -149,6 +151,7 @@ class _PostgresOwnEmailChangeOperation:
         )
         account_id = kwargs["account_id"]
         new_email = kwargs["new_email"]
+        dispatches: list[SecurityNotificationDispatch] = []
         with self._engine.begin() as connection:
             outcome = _compose(
                 connection,
@@ -156,40 +159,49 @@ class _PostgresOwnEmailChangeOperation:
                 entropy=entropy,
                 key_ring=self._key_ring,
                 clock=self._clock,
+                dispatches=dispatches,
             ).request(**kwargs)
-            if outcome != "reserved":
-                return outcome
-            issued_link = SecurityLinkLifecycle(
-                store=PostgresSecurityLinkStore(connection),
-                clock=self._clock,
-                secret_generator=entropy,
-                protector=SecurityLinkProtector(key_ring=self._key_ring),
-            ).issue(account_id=account_id, purpose="email_change")
+            issued_link = None
+            if outcome == "reserved":
+                issued_link = SecurityLinkLifecycle(
+                    store=PostgresSecurityLinkStore(connection),
+                    clock=self._clock,
+                    secret_generator=entropy,
+                    protector=SecurityLinkProtector(key_ring=self._key_ring),
+                ).issue(account_id=account_id, purpose="email_change")
+
+        deliver_security_notices(
+            engine=self._engine,
+            email_sender=self._email_sender,
+            notices=dispatches,
+        )
+        if outcome != "reserved" or issued_link is None:
+            return outcome
 
         content = (
             "Para confirmar el cambio de correo, abre este enlace dentro de los "
             "próximos 30 minutos: /admin/email-change"
             + security_link_fragment(issued_link.token)
         )
-        try:
-            sent = self._email_sender.send(
-                OutboundNotification(
-                    channel=EMAIL_CHANNEL,
-                    recipient=normalize_administrative_email_address(new_email),
-                    content=content,
-                )
+        link_id = issued_link.stored_link.link_id
+        sent = send_security_link_notification(
+            sender=self._email_sender,
+            notification=OutboundNotification(
+                channel=EMAIL_CHANNEL,
+                recipient=normalize_administrative_email_address(new_email),
+                content=content,
+                idempotency_key=f"security-link:{link_id}",
             )
-            accepted = sent.channel == EMAIL_CHANNEL and sent.outcome == "accepted"
-        except Exception:
-            _LOGGER.warning("administrative email-change link delivery failed")
-            accepted = False
+        )
+        accepted = sent.outcome == "accepted"
 
         now = self._clock.now()
         with self._engine.begin() as connection:
             link_store = PostgresSecurityLinkStore(connection)
-            link_id = issued_link.stored_link.link_id
             if accepted:
                 link_store.mark_delivery_accepted(link_id=link_id, current_time=now)
+            elif sent.outcome == "uncertain":
+                link_store.mark_delivery_uncertain(link_id=link_id, current_time=now)
             else:
                 released = PostgresOwnEmailChangeStore(connection).invalidate_failed_delivery(
                     account_id=account_id,
@@ -205,7 +217,9 @@ class _PostgresOwnEmailChangeOperation:
                         action="email_change",
                         result="failed",
                     )
-        return "reserved" if accepted else "delivery_failed"
+        if accepted:
+            return "reserved"
+        return "delivery_uncertain" if sent.outcome == "uncertain" else "delivery_failed"
 
 
 def _compose(
@@ -215,6 +229,7 @@ def _compose(
     entropy: SecretGenerator | None = None,
     key_ring: CryptographyKeyRing | None = None,
     clock: Clock | None = None,
+    dispatches: list[SecurityNotificationDispatch] | None = None,
 ) -> RequestOwnAdministrativeEmailChange:
     clock = clock or SystemClock()
     entropy = entropy or SystemSecretGenerator()
@@ -247,6 +262,7 @@ def _compose(
             recipients=PostgresAdministrativeLockRecipientDirectory(
                 connection=connection, email_protector=email_protector
             ),
+            dispatches=dispatches,
         ),
         password_hasher=AdministrativePasswordHasher(),
         factor_protector=TotpFactorProtector(
@@ -266,8 +282,8 @@ def _compose(
 def request_own_administrative_email_change(
     body: OwnEmailChangeRequestBody,
     response: Response,
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_security_message_actor)],
     protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
-    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     operation: Annotated[OwnEmailChangeOperation, Depends(get_own_email_change_operation, scope="function")],
 ) -> OwnEmailChangeResponse:
     del protection
@@ -301,6 +317,12 @@ def request_own_administrative_email_change(
         return OwnEmailChangeResponse(
             delivery_status="failed",
             detail="No se pudo enviar el enlace. Tu correo actual sigue activo. Inténtalo de nuevo.",
+        )
+    if outcome == "delivery_uncertain":
+        response.status_code = status.HTTP_202_ACCEPTED
+        return OwnEmailChangeResponse(
+            delivery_status="uncertain",
+            detail="No fue posible confirmar el envío. Tu correo actual sigue activo; puedes solicitar un enlace nuevo.",
         )
     if outcome != "reserved":
         return JSONResponse(

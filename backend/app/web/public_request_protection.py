@@ -17,16 +17,21 @@ from backend.app.application.public_credential_failures import (
 )
 from backend.app.application.public_request_limit import (
     AllowPublicRequests,
+    LimitPublicAuthenticationRequests,
     LimitPublicAppointmentRequests,
     LimitPublicReadRequests,
     PublicRequestLimiter,
 )
+from backend.app.application.entropy import SystemSecretGenerator
 from backend.app.infrastructure.persistence.database import create_postgres_engine
 from backend.app.infrastructure.persistence.public_request_limit_repository import (
     PostgresPublicRequestWindowStore,
 )
 from backend.app.infrastructure.persistence.public_credential_failure_repository import (
     PostgresPublicCredentialFailureStore,
+)
+from backend.app.infrastructure.persistence.admin_rate_limit_repository import (
+    PostgresAdministrativeRateLimitStore,
 )
 from backend.app.infrastructure.security.public_request_subject import (
     PublicRequestSubjectProtector,
@@ -59,6 +64,39 @@ def get_public_read_request_limiter(request: Request) -> Iterator[PublicRequestL
             )
     finally:
         engine.dispose()
+
+
+def get_public_authentication_request_limiter(
+    request: Request,
+) -> Iterator[PublicRequestLimiter]:
+    """Share the persisted IP budget across login, recovery and availability."""
+
+    subject_fingerprint = _public_request_subject_fingerprint(request)
+    engine = create_postgres_engine(load_settings().database_url)
+    try:
+        yield _PostgresPublicAuthenticationRequestLimiter(
+            engine=engine,
+            subject_fingerprint=subject_fingerprint,
+        )
+    finally:
+        engine.dispose()
+
+
+class _PostgresPublicAuthenticationRequestLimiter:
+    """Commit the public reservation before a route can perform business work."""
+
+    def __init__(self, *, engine, subject_fingerprint: bytes) -> None:
+        self._engine = engine
+        self._subject_fingerprint = subject_fingerprint
+
+    def ensure_allowed(self, category: str) -> None:
+        with self._engine.begin() as connection:
+            LimitPublicAuthenticationRequests(
+                store=PostgresAdministrativeRateLimitStore(connection),
+                clock=SystemClock(),
+                subject_fingerprint=self._subject_fingerprint,
+                secret_generator=SystemSecretGenerator(),
+            ).ensure_allowed(category)
 
 
 def get_public_appointment_operation_limiter(
@@ -145,6 +183,12 @@ def _public_appointment_credential_protection(
 
 
 def _public_request_subject_fingerprint(request: Request) -> bytes:
+    return public_request_subject_fingerprint(request)
+
+
+def public_request_subject_fingerprint(request: Request) -> bytes:
+    """Return the trusted-proxy-derived keyed fingerprint for one public request."""
+
     direct_host = request.client.host if request.client is not None else ""
     client_ip = resolve_public_client_ip(
         direct_host=direct_host,

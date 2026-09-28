@@ -8,6 +8,7 @@ from typing import Literal, TypeAlias
 
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
+    NotificationDeliveryUncertain,
     NotificationSendResult,
     OutboundNotification,
     TransactionalNotificationPort,
@@ -19,7 +20,7 @@ EmailSimulatorOutcome: TypeAlias = Literal[
 ]
 
 
-class EmailSimulatorUncertainOutcome(RuntimeError):
+class EmailSimulatorUncertainOutcome(NotificationDeliveryUncertain):
     """The simulated provider outcome cannot be known immediately."""
 
 
@@ -88,6 +89,15 @@ class EmailSimulator(TransactionalNotificationPort):
         )
         self._results.append(result)
         return result
+
+    def reconcile(self, *, idempotency_key: str) -> NotificationSendResult | None:
+        """The simulator deliberately cannot resolve an uncertain provider attempt."""
+
+        if not isinstance(idempotency_key, str) or not idempotency_key:
+            raise ValueError("email simulator idempotency key is invalid.")
+        if self._outcome != "uncertain":
+            raise ValueError("email simulator has no uncertain delivery.")
+        return None
 
     def emit_late_failure(
         self,

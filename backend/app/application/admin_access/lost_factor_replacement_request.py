@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from backend.app.application.admin_access.rate_limit import (
+    PublicSecurityMessageBudget,
+    SecurityMessageActionBudget,
+)
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.security_links import (
     IssuedSecurityLink,
@@ -53,6 +57,8 @@ class RequestAdministrativeLostFactorReplacement:
         failure_recorder: CredentialFailureRecorder,
         links: SecurityLinkLifecycle,
         audit: RecordAdministrativeAuditEvent,
+        security_message_budget: SecurityMessageActionBudget,
+        public_security_message_budget: PublicSecurityMessageBudget | None = None,
     ) -> None:
         self._store = store
         self._email_lookup = email_lookup
@@ -60,6 +66,8 @@ class RequestAdministrativeLostFactorReplacement:
         self._failure_recorder = failure_recorder
         self._links = links
         self._audit = audit
+        self._security_message_budget = security_message_budget
+        self._public_security_message_budget = public_security_message_budget
 
     def prepare(self, *, email: str, password: str) -> PreparedLostFactorReplacement | None:
         """Return a delivery intent only for an active, unlocked, eligible account."""
@@ -67,12 +75,24 @@ class RequestAdministrativeLostFactorReplacement:
         try:
             lookup_digest = self._email_lookup.lookup_digest(email)
         except (TypeError, ValueError):
+            if self._public_security_message_budget is not None:
+                self._public_security_message_budget.reserve(account_id=None)
             self._password_verifier.verify_unknown_account(password=password)
             return None
 
         candidate = self._store.load_candidate(email_lookup_digest=lookup_digest)
         if candidate is None or candidate.password_hash is None:
+            if self._public_security_message_budget is not None:
+                self._public_security_message_budget.reserve(account_id=None)
             self._password_verifier.verify_unknown_account(password=password)
+            return None
+
+        if self._public_security_message_budget is not None:
+            if not self._public_security_message_budget.reserve(
+                account_id=candidate.account_id
+            ):
+                return None
+        elif not self._security_message_budget.reserve(account_id=candidate.account_id):
             return None
 
         if not candidate.credential_check_allowed:

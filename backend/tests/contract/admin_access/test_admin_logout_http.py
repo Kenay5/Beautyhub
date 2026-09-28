@@ -5,6 +5,7 @@ import base64
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.application.admin_access.authorization import AdministrativeActor
 from backend.app.web.admin_auth.login import ADMINISTRATIVE_SESSION_COOKIE
 from backend.app.web.admin_auth.logout import (
     get_administrative_session_closer,
@@ -13,6 +14,7 @@ from backend.app.web.admin_auth.logout import (
 from backend.app.web.admin_auth.mutation_protection import (
     require_administrative_mutation_protection,
 )
+from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
 
 
 SESSION_TOKEN = b"\x91" * 32
@@ -35,6 +37,10 @@ def _encoded(value: bytes) -> str:
 def _client(operation: CloseOperation) -> TestClient:
     app = FastAPI()
     app.include_router(router)
+    app.dependency_overrides[get_authenticated_admin_actor] = lambda: AdministrativeActor(
+        account_id=7,
+        role="owner",
+    )
     app.dependency_overrides[require_administrative_mutation_protection] = lambda: None
     app.dependency_overrides[get_administrative_session_closer] = lambda: operation
     return TestClient(app, base_url="https://beautyhub.example.test")

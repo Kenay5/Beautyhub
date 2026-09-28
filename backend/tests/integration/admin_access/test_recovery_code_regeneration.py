@@ -383,7 +383,7 @@ def test_t066_security_notice_is_attempted_after_commit_without_exposing_codes(
     monkeypatch.setattr(
         recovery_code_web,
         "_compose_regeneration",
-        lambda connection: _operation(connection),
+        lambda connection, **_kwargs: _operation(connection),
     )
     sender = EmailSimulator(outcome=delivery_outcome)
     code = pyotp.TOTP(SECRET.decode("ascii")).at(NOW)

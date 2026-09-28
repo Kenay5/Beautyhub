@@ -162,6 +162,10 @@ def test_t027_postgres_allows_only_one_concurrent_consumption(
                 secret_generator=SequenceSecretGenerator((token,)),
                 protector=_protector(),
             ).issue(account_id=account_id, purpose="password_recovery")
+            PostgresSecurityLinkStore(connection).mark_delivery_accepted(
+                link_id=issued.stored_link.link_id,
+                current_time=NOW,
+            )
 
         barrier = Barrier(2)
 

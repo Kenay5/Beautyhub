@@ -22,6 +22,7 @@ SUPPORTED_KEY_PURPOSES = frozenset(
         "admin-session-lookup",
         "private-code-encryption",
         "private-code-lookup",
+        "rate-limit-account-lookup",
         "rate-limit-ip-lookup",
         "recovery-code-lookup",
         "security-link-lookup",

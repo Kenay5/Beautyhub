@@ -29,7 +29,10 @@ from backend.app.infrastructure.persistence.schedule_repository import (
     PostgresPublicAvailabilityReader,
 )
 from backend.app.infrastructure.settings import load_settings
-from backend.app.web.public_request_protection import get_public_read_request_limiter
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+    get_public_read_request_limiter,
+)
 
 
 router = APIRouter(prefix="/api/public/availability")
@@ -68,6 +71,10 @@ def list_public_availability(
     branch: str | None = None,
     service: str | None = None,
     date: str | None = None,
+    authentication_limiter: Annotated[
+        PublicRequestLimiter,
+        Depends(get_public_authentication_request_limiter),
+    ] = None,
     limiter: Annotated[
         PublicRequestLimiter, Depends(get_public_read_request_limiter)
     ] = None,
@@ -79,6 +86,7 @@ def list_public_availability(
     """Return only starts currently valid for a public reservation request."""
 
     try:
+        authentication_limiter.ensure_allowed("availability")  # type: ignore[union-attr]
         limiter.ensure_allowed("availability")  # type: ignore[union-attr]
         appointment_date = _parse_date(date)
         starts = ListPublicAvailability(reader, clock).execute(  # type: ignore[arg-type]

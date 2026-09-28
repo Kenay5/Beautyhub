@@ -4,11 +4,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.application.admin_access.password_recovery_request import PasswordRecoveryIntent
+from backend.app.application.public_request_limit import AllowPublicRequests
 from backend.app.web.admin_auth.password_recovery_request import (
     get_password_recovery_operations,
     router,
 )
 from backend.app.web.admin_security_headers import register_administrative_security_headers
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+)
 
 
 class Requester:
@@ -27,6 +31,9 @@ def _request(email: str, intent: PasswordRecoveryIntent | None):
     register_administrative_security_headers(app)
     requester = Requester(intent)
     app.dependency_overrides[get_password_recovery_operations] = lambda: requester
+    app.dependency_overrides[get_public_authentication_request_limiter] = (
+        AllowPublicRequests
+    )
     with TestClient(app) as client:
         response = client.post("/api/admin/password-recovery", json={"email": email})
     assert requester.emails == [email]

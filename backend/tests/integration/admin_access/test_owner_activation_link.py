@@ -187,3 +187,81 @@ def test_t032_invalidates_failed_link_keeps_owner_inactive_and_allows_reissue(
         ("active", "pending"),
     ]
     assert failed.issued_link.token != replacement.issued_link.token
+
+
+@pytest.mark.integration
+def test_t097_uncertain_link_is_not_inspectable_or_consumable(migrated_engine: Engine) -> None:
+    _register_owner(migrated_engine)
+    prepared = _prepare(migrated_engine, b"\x68" * 32)
+    assert not _deliver(migrated_engine, prepared, "uncertain")
+
+    with migrated_engine.begin() as connection:
+        lifecycle = SecurityLinkLifecycle(
+            store=PostgresSecurityLinkStore(connection),
+            clock=FixedClock(NOW),
+            secret_generator=SequenceSecretGenerator([b"\x69" * 32]),
+            protector=SecurityLinkProtector(key_ring=_key_ring()),
+        )
+        assert lifecycle.inspect(
+            token=prepared.issued_link.token, purpose="initial_activation"
+        ) is None
+        assert lifecycle.consume(
+            token=prepared.issued_link.token, purpose="initial_activation"
+        ) is None
+    with migrated_engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT status, delivery_status FROM security_links")
+        ).one() == ("active", "uncertain")
+        assert connection.execute(
+            text("SELECT status FROM admin_accounts WHERE role = 'owner'")
+        ).scalar_one() == "inactive"
+
+
+@pytest.mark.integration
+def test_t097_late_failure_invalidates_accepted_link_idempotently(
+    migrated_engine: Engine,
+) -> None:
+    _register_owner(migrated_engine)
+    prepared = _prepare(migrated_engine, b"\x6a" * 32)
+    assert _deliver(migrated_engine, prepared, "accepted")
+    with migrated_engine.begin() as connection:
+        PostgresSecurityLinkStore(connection).invalidate_failed_delivery(
+            link_id=prepared.issued_link.stored_link.link_id,
+            current_time=NOW + timedelta(seconds=20),
+        )
+    with migrated_engine.begin() as connection:
+        PostgresSecurityLinkStore(connection).invalidate_failed_delivery(
+            link_id=prepared.issued_link.stored_link.link_id,
+            current_time=NOW + timedelta(seconds=30),
+        )
+    with migrated_engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT status, delivery_status, invalidated_at FROM security_links")
+        ).one() == ("invalidated", "failed", NOW + timedelta(seconds=20))
+
+
+@pytest.mark.integration
+def test_t097_late_provider_results_cannot_change_a_replacement(
+    migrated_engine: Engine,
+) -> None:
+    _register_owner(migrated_engine)
+    first = _prepare(migrated_engine, b"\x6b" * 32)
+    assert _deliver(migrated_engine, first, "accepted")
+    second = _prepare(migrated_engine, b"\x6c" * 32)
+    assert _deliver(migrated_engine, second, "accepted")
+
+    with migrated_engine.begin() as connection:
+        links = PostgresSecurityLinkStore(connection)
+        links.invalidate_failed_delivery(
+            link_id=first.issued_link.stored_link.link_id,
+            current_time=NOW + timedelta(seconds=40),
+        )
+        links.mark_delivery_accepted(
+            link_id=first.issued_link.stored_link.link_id,
+            current_time=NOW + timedelta(seconds=41),
+        )
+    with migrated_engine.connect() as connection:
+        rows = connection.execute(
+            text("SELECT status, delivery_status FROM security_links ORDER BY security_link_id")
+        ).all()
+    assert rows == [("invalidated", "accepted"), ("active", "accepted")]

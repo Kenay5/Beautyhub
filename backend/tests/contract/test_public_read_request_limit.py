@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.application.public_request_limit import PublicRequestRateLimitError
-from backend.app.web.app import create_app
-from backend.app.web.public_availability import get_public_availability_reader
-from backend.app.web.public_request_protection import get_public_read_request_limiter
-from backend.app.web.public_services import get_active_service_catalog
+from backend.app.application.public_request_limit import AllowPublicRequests
+from backend.app.web.public_availability import (
+    get_public_availability_reader,
+    router as availability_router,
+)
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+    get_public_read_request_limiter,
+)
+from backend.app.web.public_services import (
+    get_active_service_catalog,
+    router as services_router,
+)
 
 
 class DenyReadRequests:
@@ -43,9 +53,11 @@ class UnusedAvailabilityReader:
 
 def test_t067_catalog_limit_rejects_before_reading_and_sanitizes_response() -> None:
     catalog = UnusedCatalog()
-    app = create_app()
+    app = FastAPI()
+    app.include_router(services_router)
     app.dependency_overrides[get_active_service_catalog] = lambda: catalog
     app.dependency_overrides[get_public_read_request_limiter] = DenyReadRequests
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
 
     with TestClient(app) as client:
         response = client.get("/api/public/services", params={"branch": "texcoco"})
@@ -58,9 +70,11 @@ def test_t067_catalog_limit_rejects_before_reading_and_sanitizes_response() -> N
 
 def test_t067_availability_limit_rejects_before_reading_and_sanitizes_response() -> None:
     reader = UnusedAvailabilityReader()
-    app = create_app()
+    app = FastAPI()
+    app.include_router(availability_router)
     app.dependency_overrides[get_public_availability_reader] = lambda: reader
     app.dependency_overrides[get_public_read_request_limiter] = DenyReadRequests
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
 
     with TestClient(app) as client:
         response = client.get(

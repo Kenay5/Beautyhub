@@ -14,6 +14,7 @@ from backend.app.application.admin_access.account_security import (
     EnsureAdministrativeCredentialCheck,
     RecordAdministrativeCredentialFailure,
     RecordProtectedAdministrativeCredentialFailure,
+    SecurityNotificationDispatch,
 )
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.login_completion import (
@@ -30,6 +31,10 @@ from backend.app.application.admin_access.security_notification_deliveries impor
 )
 from backend.app.application.clock import SystemClock
 from backend.app.application.entropy import SystemSecretGenerator
+from backend.app.application.public_request_limit import (
+    PublicRequestLimiter,
+    PublicRequestRateLimitError,
+)
 from backend.app.infrastructure.persistence.admin_account_security_repository import (
     PostgresAdministrativeAccountSecurityStore,
 )
@@ -49,6 +54,7 @@ from backend.app.infrastructure.persistence.admin_session_repository import (
     PostgresAdministrativeLoginSessionStore,
 )
 from backend.app.infrastructure.persistence.database import create_postgres_engine
+from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.security_notification_delivery_repository import (
     PostgresSecurityNotificationDeliveryStore,
 )
@@ -79,11 +85,16 @@ from backend.app.infrastructure.settings import (
     load_cryptography_key_configuration,
     load_settings,
 )
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+)
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 router = APIRouter(prefix="/api/admin/sessions", tags=["admin-sessions"])
 ADMINISTRATIVE_SESSION_COOKIE = "__Host-beautyhub-session"
 _INVALID_CREDENTIALS_DETAIL = "Las credenciales no son válidas."
+_RATE_LIMIT_DETAIL = "Demasiadas solicitudes. Inténtalo más tarde."
 
 
 class AdministrativeLoginBody(BaseModel):
@@ -125,6 +136,7 @@ def get_administrative_login() -> Iterator[_AdministrativeLoginOperation]:
     clock = SystemClock()
     entropy = SystemSecretGenerator()
     key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
+    dispatches: list[SecurityNotificationDispatch] = []
     try:
         with engine.begin() as connection:
             security_store = PostgresAdministrativeAccountSecurityStore(connection)
@@ -153,6 +165,7 @@ def get_administrative_login() -> Iterator[_AdministrativeLoginOperation]:
                     connection=connection,
                     email_protector=email_protector,
                 ),
+                dispatches=dispatches,
             )
             validation = ValidateAdministrativeLogin(
                 store=PostgresAdministrativeLoginStore(connection),
@@ -188,6 +201,12 @@ def get_administrative_login() -> Iterator[_AdministrativeLoginOperation]:
                     clock=clock,
                 ),
             )
+        if dispatches:
+            deliver_security_notices(
+                engine=engine,
+                email_sender=EmailSimulator(outcome="accepted"),
+                notices=dispatches,
+            )
     finally:
         engine.dispose()
 
@@ -213,12 +232,24 @@ class _AdministrativeLoginOperation:
 def create_administrative_session(
     body: AdministrativeLoginBody,
     response: Response,
+    limiter: Annotated[
+        PublicRequestLimiter,
+        Depends(get_public_authentication_request_limiter),
+    ],
     login: Annotated[
         _AdministrativeLoginOperation,
         Depends(get_administrative_login, scope="function"),
     ],
 ) -> AdministrativeLoginResponse | JSONResponse:
     """Authenticate once and emit separate session-cookie and CSRF values."""
+
+    try:
+        limiter.ensure_allowed("login")
+    except PublicRequestRateLimitError:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": _RATE_LIMIT_DETAIL},
+        )
 
     outcome = login.login(
         email=body.email,

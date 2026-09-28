@@ -11,7 +11,9 @@ from backend.app.web.admin_auth.own_email_change import (
     get_own_email_change_operation,
     router,
 )
-from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_authenticated_security_message_actor,
+)
 
 
 class Operation:
@@ -28,9 +30,8 @@ def _client(operation: Operation):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[require_administrative_mutation_protection] = lambda: None
-    app.dependency_overrides[get_authenticated_admin_actor] = lambda: AdministrativeActor(
-        account_id=9, role="staff"
-    )
+    actor = AdministrativeActor(account_id=9, role="staff")
+    app.dependency_overrides[get_authenticated_security_message_actor] = lambda: actor
     app.dependency_overrides[get_own_email_change_operation] = lambda: operation
     return TestClient(app)
 

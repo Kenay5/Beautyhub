@@ -14,6 +14,7 @@ from backend.app.application.admin_access.account_security import (
     EnsureAdministrativeCredentialCheck,
     RecordAdministrativeCredentialFailure,
     RecordProtectedAdministrativeCredentialFailure,
+    SecurityNotificationDispatch,
 )
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.authorization import AdministrativeActor
@@ -36,6 +37,7 @@ from backend.app.infrastructure.persistence.admin_lock_recipient_repository impo
     PostgresAdministrativeLockRecipientDirectory,
 )
 from backend.app.infrastructure.persistence.database import create_postgres_engine
+from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.totp_replacement_repository import (
     PostgresTotpReplacementStore,
 )
@@ -73,6 +75,7 @@ from backend.app.web.admin_auth.mutation_protection import (
     require_administrative_mutation_protection,
 )
 from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 router = APIRouter(prefix="/api/admin/totp-replacement", tags=["admin-totp-replacement"])
@@ -119,12 +122,23 @@ class _PostgresTotpReplacementOperation:
         self._engine = engine
 
     def prepare(self, **kwargs) -> PreparedTotpReplacement | str:
+        dispatches: list[SecurityNotificationDispatch] = []
         with self._engine.begin() as connection:
-            operation = _compose(connection)
-            return operation.prepare(**kwargs)
+            operation = _compose(connection, dispatches=dispatches)
+            outcome = operation.prepare(**kwargs)
+        deliver_security_notices(
+            engine=self._engine,
+            email_sender=EmailSimulator(outcome="accepted"),
+            notices=dispatches,
+        )
+        return outcome
 
 
-def _compose(connection: Connection) -> PrepareAdministrativeTotpReplacement:
+def _compose(
+    connection: Connection,
+    *,
+    dispatches: list[SecurityNotificationDispatch] | None = None,
+) -> PrepareAdministrativeTotpReplacement:
     clock = SystemClock()
     entropy = SystemSecretGenerator()
     key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
@@ -155,6 +169,7 @@ def _compose(connection: Connection) -> PrepareAdministrativeTotpReplacement:
             recipients=PostgresAdministrativeLockRecipientDirectory(
                 connection, email_protector
             ),
+            dispatches=dispatches,
         ),
         password_hasher=AdministrativePasswordHasher(),
         factor_protector=TotpFactorProtector(key_ring=key_ring, secret_generator=entropy),
@@ -173,8 +188,8 @@ def _compose(connection: Connection) -> PrepareAdministrativeTotpReplacement:
 def prepare_administrative_totp_replacement(
     body: TotpReplacementPreparationBody,
     response: Response,
-    protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
     actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
+    protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
     operation: Annotated[TotpReplacementOperation, Depends(get_totp_replacement_operation, scope="function")],
 ) -> TotpReplacementPreparationResponse | JSONResponse:
     del protection

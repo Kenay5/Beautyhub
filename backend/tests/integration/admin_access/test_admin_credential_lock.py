@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Lock
 
 import pytest
 from alembic import command
@@ -17,6 +17,7 @@ from sqlalchemy import Engine, func, insert, select, text
 from backend.app.application.admin_access.account_security import (
     RecordAdministrativeCredentialFailure,
     RecordProtectedAdministrativeCredentialFailure,
+    SecurityNotificationDispatch,
 )
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.security_notification_deliveries import (
@@ -45,6 +46,10 @@ from backend.app.infrastructure.persistence.models import (
 from backend.app.infrastructure.persistence.security_notification_delivery_repository import (
     PostgresSecurityNotificationDeliveryStore,
 )
+from backend.app.application.transactional_notifications import (
+    NotificationSendResult,
+    OutboundNotification,
+)
 from backend.app.infrastructure.security.admin_email_protection import (
     AdministrativeEmailProtector,
 )
@@ -60,6 +65,7 @@ from backend.app.infrastructure.settings import (
     SecretValue,
     load_test_database_url,
 )
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -153,7 +159,7 @@ def _seed_accounts(engine: Engine, *, include_staff: bool) -> tuple[int, int | N
     return owner_id, staff_id
 
 
-def _protected_recorder(connection, *, now: datetime = NOW):
+def _protected_recorder(connection, *, now: datetime = NOW, dispatches=None):
     ring = _ring()
     email_protector = AdministrativeEmailProtector(
         key_ring=ring,
@@ -179,6 +185,7 @@ def _protected_recorder(connection, *, now: datetime = NOW):
             connection=connection,
             email_protector=email_protector,
         ),
+        dispatches=dispatches,
     )
 
 
@@ -317,6 +324,134 @@ def test_t045_concurrent_fifth_failure_creates_one_lock_audit_and_notice(
     assert state == NOW + timedelta(minutes=15)
     assert audit_count == 1
     assert delivery_count == 1
+
+
+class _LockNoticeSender:
+    def __init__(self, outcome: str) -> None:
+        self.outcome = outcome
+        self.notifications: list[OutboundNotification] = []
+
+    def send(self, notification: OutboundNotification) -> NotificationSendResult:
+        self.notifications.append(notification)
+        if self.outcome == "exception":
+            raise RuntimeError("provider token=must-not-be-recorded")
+        return (
+            NotificationSendResult.failed(notification.channel)
+            if self.outcome == "failed"
+            else NotificationSendResult.accepted(notification.channel)
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("delivery_outcome", ["accepted", "failed", "exception"])
+def test_t096_staff_lock_notice_reaches_holder_and_owner_once_and_is_retry_safe(
+    migrated_engine: Engine, delivery_outcome: str
+) -> None:
+    _, staff_id = _seed_accounts(migrated_engine, include_staff=True)
+    assert staff_id is not None
+    dispatches: list[SecurityNotificationDispatch] = []
+    with migrated_engine.begin() as connection:
+        recorder = _protected_recorder(connection, dispatches=dispatches)
+        outcomes = tuple(
+            recorder.record(account_id=staff_id, operation="login")
+            for _ in range(5)
+        )
+    assert outcomes[-1].started_lock
+    assert len(dispatches) == 2
+
+    sender = _LockNoticeSender(delivery_outcome)
+    deliver_security_notices(
+        engine=migrated_engine, email_sender=sender, notices=dispatches
+    )
+    assert [notice.recipient for notice in sender.notifications] == [
+        STAFF_EMAIL,
+        OWNER_EMAIL,
+    ]
+    assert all("token" not in notice.content.lower() for notice in sender.notifications)
+    assert all("código" not in notice.content.lower() for notice in sender.notifications)
+
+    # A duplicate dispatch observes the claimed/completed durable intent and is skipped.
+    deliver_security_notices(
+        engine=migrated_engine, email_sender=sender, notices=dispatches
+    )
+    assert len(sender.notifications) == 2
+    with migrated_engine.connect() as connection:
+        records = tuple(
+            connection.execute(
+                select(
+                    SecurityNotificationDelivery.event,
+                    SecurityNotificationDelivery.status,
+                    SecurityNotificationDelivery.recipient_ciphertext,
+                ).order_by(
+                    SecurityNotificationDelivery.security_notification_delivery_id
+                )
+            )
+        )
+        lock_until = connection.execute(
+            select(AdminAccountSecurityState.lock_until).where(
+                AdminAccountSecurityState.admin_account_id == staff_id
+            )
+        ).scalar_one()
+    assert len(records) == 2
+    expected_delivery_status = (
+        "accepted" if delivery_outcome == "accepted" else "failed"
+    )
+    assert {(row.event, row.status) for row in records} == {
+        ("account_locked", expected_delivery_status)
+    }
+    if expected_delivery_status == "accepted":
+        assert all(row.recipient_ciphertext is None for row in records)
+    else:
+        assert all(row.recipient_ciphertext for row in records)
+    assert lock_until == NOW + timedelta(minutes=15)
+
+
+@pytest.mark.integration
+def test_t098_concurrent_dispatches_send_one_notice_for_one_durable_intent(
+    migrated_engine: Engine,
+) -> None:
+    owner_id, _ = _seed_accounts(migrated_engine, include_staff=False)
+    dispatches: list[SecurityNotificationDispatch] = []
+    with migrated_engine.begin() as connection:
+        recorder = _protected_recorder(connection, dispatches=dispatches)
+        for _ in range(5):
+            recorder.record(account_id=owner_id, operation="login")
+    assert len(dispatches) == 1
+
+    class ConcurrentSender:
+        def __init__(self) -> None:
+            self.notifications: list[OutboundNotification] = []
+            self._lock = Lock()
+
+        def send(self, notification: OutboundNotification) -> NotificationSendResult:
+            with self._lock:
+                self.notifications.append(notification)
+            return NotificationSendResult.accepted(notification.channel)
+
+    sender = ConcurrentSender()
+    barrier = Barrier(2)
+
+    def dispatch() -> None:
+        barrier.wait(timeout=10)
+        deliver_security_notices(
+            engine=migrated_engine,
+            email_sender=sender,
+            notices=dispatches,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(dispatch) for _ in range(2)]
+        for future in futures:
+            future.result(timeout=20)
+
+    assert len(sender.notifications) == 1
+    with migrated_engine.connect() as connection:
+        rows = connection.execute(
+            select(SecurityNotificationDelivery.status).where(
+                SecurityNotificationDelivery.event == "account_locked"
+            )
+        ).scalars().all()
+    assert rows == ["accepted"]
 
 
 def _run_concurrently(workers: tuple[Callable[[], str], ...]) -> list[str]:

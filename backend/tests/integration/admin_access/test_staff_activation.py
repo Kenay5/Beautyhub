@@ -11,6 +11,11 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, insert, text
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
+from backend.app.application.transactional_notifications import (
+    EMAIL_CHANNEL,
+    NotificationSendResult,
+    OutboundNotification,
+)
 from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
 from backend.app.application.admin_access.staff_activation import CompleteStaffActivation, PrepareStaffActivationSetup
 from backend.app.application.clock import FixedClock
@@ -23,6 +28,7 @@ from backend.app.infrastructure.persistence.security_link_repository import Post
 from backend.app.infrastructure.persistence.staff_activation_repository import PostgresStaffActivationStore
 from backend.app.infrastructure.security.administrative_password_hashing import AdministrativePasswordHasher
 from backend.app.infrastructure.security.cryptography_key_ring import CryptographyKeyRing
+from backend.app.infrastructure.security.admin_email_protection import AdministrativeEmailProtector
 from backend.app.infrastructure.security.pending_totp_protection import PendingTotpProtector
 from backend.app.infrastructure.security.recovery_code_protection import RecoveryCodeProtector
 from backend.app.infrastructure.security.recovery_codes import RecoveryCodeService
@@ -30,6 +36,8 @@ from backend.app.infrastructure.security.security_link_protection import Securit
 from backend.app.infrastructure.security.totp import TotpAuthenticator
 from backend.app.infrastructure.security.totp_factor_protection import TotpFactorProtector
 from backend.app.infrastructure.settings import CryptographyKeyConfiguration, SecretValue, load_test_database_url
+from backend.app.web.admin_auth import staff_activation as staff_activation_web
+from backend.app.web.admin_auth.staff_activation import _PostgresStaffActivationCompleter
 
 REPOSITORY_ROOT=Path(__file__).resolve().parents[4]; NOW=datetime(2033,4,5,14,tzinfo=timezone.utc); TOKEN=b"\xc1"*32; PASSWORD="synthetic staff phrase 2033"
 class AllowedPasswords:
@@ -41,7 +49,7 @@ def migrated_engine()->Iterator[Engine]:
         with engine.connect() as connection:
             config=Config(str(REPOSITORY_ROOT/"backend"/"alembic.ini")); config.attributes["connection"]=connection; command.upgrade(config,"head")
         with engine.begin() as c:
-            c.execute(text("TRUNCATE TABLE admin_accounts, owner_bootstrap_state RESTART IDENTITY CASCADE")); c.execute(text("INSERT INTO owner_bootstrap_state (bootstrap_state_id,status) VALUES (1,'open')"))
+            c.execute(text("TRUNCATE TABLE security_notification_deliveries, admin_accounts, owner_bootstrap_state RESTART IDENTITY CASCADE")); c.execute(text("INSERT INTO owner_bootstrap_state (bootstrap_state_id,status) VALUES (1,'open')"))
         yield engine
     finally: engine.dispose()
 def _ring(): return CryptographyKeyRing(CryptographyKeyConfiguration(root_key=SecretValue(base64.urlsafe_b64encode(b"\xc2"*32).decode("ascii")),key_version="v1"))
@@ -94,6 +102,104 @@ def test_t065_activation_returns_recovery_codes_only_on_the_first_successful_com
     assert repeated.rejection == "unavailable"
     assert repeated.recovery_codes == ()
     assert tuple(state) == ("consumed", 10, 0)
+
+
+class _ActivationNoticeSender:
+    def __init__(self) -> None:
+        self.notifications: list[OutboundNotification] = []
+
+    def send(self, notification: OutboundNotification) -> NotificationSendResult:
+        self.notifications.append(notification)
+        return NotificationSendResult.accepted(notification.channel)
+
+
+@pytest.mark.integration
+def test_t096_staff_activation_notifies_only_owner_without_credentials(
+    migrated_engine, monkeypatch
+):
+    owner_email = "synthetic.owner@example.test"
+    staff_email = "synthetic.staff@example.test"
+    protector = AdministrativeEmailProtector(
+        key_ring=_ring(), secret_generator=SystemSecretGenerator()
+    )
+    owner_claim = protector.protect(owner_email)
+    staff_claim = protector.protect(staff_email)
+    with migrated_engine.begin() as connection:
+        owner_id = connection.execute(
+            insert(AdminAccount).values(role="owner", status="active").returning(
+                AdminAccount.admin_account_id
+            )
+        ).scalar_one()
+        staff_id = connection.execute(
+            insert(AdminAccount).values(role="staff", status="pending").returning(
+                AdminAccount.admin_account_id
+            )
+        ).scalar_one()
+        connection.execute(
+            insert(AdminEmailClaim).values(
+                admin_account_id=owner_id,
+                claim_kind="current",
+                lookup_digest=owner_claim.lookup_digest,
+                email_ciphertext=owner_claim.email_ciphertext,
+                key_version=owner_claim.key_version,
+            )
+        )
+        connection.execute(
+            insert(AdminEmailClaim).values(
+                admin_account_id=staff_id,
+                claim_kind="current",
+                lookup_digest=staff_claim.lookup_digest,
+                email_ciphertext=staff_claim.email_ciphertext,
+                key_version=staff_claim.key_version,
+            )
+        )
+        issued = _lifecycle(connection).issue(
+            account_id=staff_id, purpose="invitation"
+        )
+        PostgresSecurityLinkStore(connection).mark_delivery_accepted(
+            link_id=issued.stored_link.link_id, current_time=NOW
+        )
+
+    prepared = _prepare(migrated_engine)
+    monkeypatch.setattr(staff_activation_web, "_components", lambda: (FixedClock(NOW), _ring()))
+    monkeypatch.setattr(
+        staff_activation_web.BlockedPasswordList,
+        "load",
+        classmethod(lambda _cls, *, clock: AllowedPasswords()),
+    )
+    sender = _ActivationNoticeSender()
+    outcome = _PostgresStaffActivationCompleter(
+        engine=migrated_engine, email_sender=sender
+    ).complete(
+        token=TOKEN,
+        password="Q7!synthetic-Staff-Activation-2033-zebra",
+        totp_code=pyotp.TOTP(prepared.manual_key).at(NOW),
+    )
+
+    assert outcome.rejection is None
+    assert len(outcome.recovery_codes) == 10
+    assert len(sender.notifications) == 1
+    notice = sender.notifications[0]
+    assert notice.recipient == owner_email
+    assert notice.recipient != staff_email
+    assert notice.channel == EMAIL_CHANNEL
+    assert "token" not in notice.content.lower()
+    assert "código" not in notice.content.lower()
+    assert "contraseña" not in notice.content.lower()
+    assert all(code not in notice.content for code in outcome.recovery_codes)
+    with migrated_engine.connect() as connection:
+        delivery = connection.execute(
+            text(
+                "SELECT event, template, status, sanitized_error "
+                "FROM security_notification_deliveries"
+            )
+        ).one()
+    assert tuple(delivery) == (
+        "staff_activated",
+        "staff_activation_notice",
+        "accepted",
+        None,
+    )
 
 
 @pytest.mark.integration

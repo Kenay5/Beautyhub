@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from backend.app.application.admin_access.rate_limit import (
+    AdministrativeRateLimitStore,
+    ReserveAdministrativeRateLimit,
+)
 from backend.app.application.clock import Clock
+from backend.app.application.entropy import SecretGenerator
+from backend.app.domain.authentication.rate_limit import (
+    AUTHENTICATION_RECOVERY_LOST_FACTOR_LIMIT,
+)
 from backend.app.domain.time import normalize_instant
 
 
@@ -25,6 +33,9 @@ PUBLIC_APPOINTMENT_OPERATION_CATEGORIES = frozenset(
 PUBLIC_APPOINTMENT_EVENT_CATEGORY = "appointment_operation"
 PUBLIC_APPOINTMENT_REQUEST_LIMIT = 10
 PUBLIC_APPOINTMENT_REQUEST_WINDOW = timedelta(minutes=15)
+PUBLIC_AUTHENTICATION_CATEGORIES = frozenset(
+    {"login", "password_recovery", "lost_factor_replacement", "availability"}
+)
 
 
 class PublicRequestRateLimitError(ValueError):
@@ -114,6 +125,43 @@ class LimitPublicReadRequests:
         if not accepted:
             raise PublicRequestRateLimitError(
                 "Public catalog and availability request limit exceeded."
+            )
+
+
+class LimitPublicAuthenticationRequests:
+    """Share the 20-per-15-minute IP budget across public security flows."""
+
+    def __init__(
+        self,
+        *,
+        store: AdministrativeRateLimitStore,
+        clock: Clock,
+        subject_fingerprint: bytes,
+        secret_generator: SecretGenerator,
+    ) -> None:
+        if not isinstance(subject_fingerprint, bytes) or len(subject_fingerprint) != 32:
+            raise ValueError("public authentication subject fingerprint is invalid.")
+        self._store = store
+        self._clock = clock
+        self._subject_fingerprint = subject_fingerprint
+        self._secret_generator = secret_generator
+
+    def ensure_allowed(self, category: str) -> None:
+        """Reserve one request in the shared persisted authentication budget."""
+
+        if category not in PUBLIC_AUTHENTICATION_CATEGORIES:
+            raise ValueError("public authentication request category is invalid.")
+        reserved = ReserveAdministrativeRateLimit(
+            store=self._store,
+            clock=self._clock,
+        ).reserve(
+            category=AUTHENTICATION_RECOVERY_LOST_FACTOR_LIMIT.category,
+            subject_fingerprint=self._subject_fingerprint,
+            request_fingerprint=self._secret_generator.token_bytes(32),
+        )
+        if not reserved:
+            raise PublicRequestRateLimitError(
+                "Public authentication request limit exceeded."
             )
 
 

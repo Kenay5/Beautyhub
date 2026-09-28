@@ -36,6 +36,10 @@ from backend.app.web.admin_auth.login import ADMINISTRATIVE_SESSION_COOKIE
 from backend.app.web.admin_auth.mutation_protection import (
     decode_administrative_browser_secret,
 )
+from backend.app.web.admin_auth.request_rate_limit import (
+    AuthenticatedAdministrativeRequestLimiter,
+    get_authenticated_administrative_request_limiter,
+)
 
 
 router = APIRouter(prefix="/api/admin/sessions", tags=["admin-sessions"])
@@ -71,7 +75,7 @@ def get_administrative_session_context_loader(
         engine.dispose()
 
 
-def get_authenticated_admin_actor(
+def get_revalidated_admin_actor(
     loader: Annotated[
         LoadAdministrativeSessionContext,
         Depends(get_administrative_session_context_loader, scope="function"),
@@ -81,14 +85,31 @@ def get_authenticated_admin_actor(
         Cookie(alias=ADMINISTRATIVE_SESSION_COOKIE),
     ] = None,
 ) -> AdministrativeActor:
-    """Derive identity and role from current PostgreSQL state, never the client."""
+    """Derive and revalidate identity from PostgreSQL without consuming a quota."""
 
     try:
-        return loader.authenticate(
+        actor = loader.authenticate(
             session_token=decode_administrative_browser_secret(session_cookie)
         )
     except (AdministrativeSessionAuthenticationError, ValueError) as error:
         raise HTTPException(status_code=401, detail=_AUTHENTICATION_DETAIL) from error
+    return actor
+
+
+def get_authenticated_admin_actor(
+    actor: Annotated[
+        AdministrativeActor,
+        Depends(get_revalidated_admin_actor),
+    ],
+    request_limiter: Annotated[
+        AuthenticatedAdministrativeRequestLimiter,
+        Depends(get_authenticated_administrative_request_limiter, scope="function"),
+    ],
+) -> AdministrativeActor:
+    """Apply the ordinary account quota after session revalidation."""
+
+    request_limiter.ensure_allowed(actor=actor)
+    return actor
 
 
 @router.get("/current", response_model=AdministrativeSessionContextResponse)
@@ -96,6 +117,10 @@ def read_administrative_session_context(
     loader: Annotated[
         LoadAdministrativeSessionContext,
         Depends(get_administrative_session_context_loader, scope="function"),
+    ],
+    request_limiter: Annotated[
+        AuthenticatedAdministrativeRequestLimiter,
+        Depends(get_authenticated_administrative_request_limiter, scope="function"),
     ],
     session_cookie: Annotated[
         str | None,
@@ -105,9 +130,13 @@ def read_administrative_session_context(
     """Return a freshly revalidated context without extending inactivity."""
 
     try:
-        context = loader.refresh(
-            session_token=decode_administrative_browser_secret(session_cookie)
-        )
+        session_token = decode_administrative_browser_secret(session_cookie)
+        actor = loader.authenticate(session_token=session_token)
+    except (AdministrativeSessionAuthenticationError, ValueError) as error:
+        raise HTTPException(status_code=401, detail=_AUTHENTICATION_DETAIL) from error
+    request_limiter.ensure_allowed(actor=actor)
+    try:
+        context = loader.refresh(session_token=session_token)
     except (AdministrativeSessionAuthenticationError, ValueError) as error:
         raise HTTPException(status_code=401, detail=_AUTHENTICATION_DETAIL) from error
     return AdministrativeSessionContextResponse(

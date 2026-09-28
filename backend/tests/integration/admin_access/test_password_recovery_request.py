@@ -6,7 +6,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -14,12 +14,15 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, insert, select, text
+from sqlalchemy import Engine, delete, insert, select, text
 
 from backend.app.application.admin_access.password_recovery_request import (
     PasswordRecoveryIntent,
     RequestAdministrativePasswordRecovery,
 )
+from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
+from backend.app.application.clock import FixedClock
+from backend.app.application.public_request_limit import AllowPublicRequests
 from backend.app.application.entropy import SystemSecretGenerator
 from backend.app.infrastructure.persistence.admin_password_recovery_request_repository import (
     PostgresAdministrativeRecoveryAccountStore,
@@ -29,8 +32,14 @@ from backend.app.infrastructure.persistence.models import (
     AdminAccount,
     AdminAuditEvent,
     AdminEmailClaim,
+    RateLimitEvent,
+    RateLimitGuard,
     SecurityLink,
 )
+from backend.app.infrastructure.persistence.security_link_repository import (
+    PostgresSecurityLinkStore,
+)
+from backend.app.domain.authentication.rate_limit import SECURITY_MESSAGE_ACTION_LIMIT
 from backend.app.infrastructure.security.admin_email_protection import AdministrativeEmailProtector
 from backend.app.infrastructure.security.administrative_password_hashing import AdministrativePasswordHasher
 from backend.app.infrastructure.security.cryptography_key_ring import CryptographyKeyRing
@@ -43,6 +52,7 @@ from backend.app.infrastructure.security.security_link_protection import (
 )
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
+    NotificationDeliveryUncertain,
     NotificationSendResult,
     OutboundNotification,
 )
@@ -55,6 +65,9 @@ from backend.app.web.admin_auth.security_link_transport import (
     decode_security_link_token,
 )
 from backend.app.web.admin_security_headers import register_administrative_security_headers
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+)
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -73,6 +86,18 @@ def migrated_engine() -> Iterator[Engine]:
         with engine.begin() as connection:
             connection.execute(text("TRUNCATE TABLE admin_accounts, owner_bootstrap_state RESTART IDENTITY CASCADE"))
             connection.execute(text("INSERT INTO owner_bootstrap_state (bootstrap_state_id, status) VALUES (1, 'open')"))
+            # Rate-limit subjects intentionally have no account FK; isolate this
+            # integration fixture from prior runs using the same synthetic IDs.
+            connection.execute(
+                delete(RateLimitEvent).where(
+                    RateLimitEvent.category == SECURITY_MESSAGE_ACTION_LIMIT.category
+                )
+            )
+            connection.execute(
+                delete(RateLimitGuard).where(
+                    RateLimitGuard.category == SECURITY_MESSAGE_ACTION_LIMIT.category
+                )
+            )
         yield engine
     finally:
         engine.dispose()
@@ -90,6 +115,8 @@ class _RecordingEmailSender:
             outcome = self.outcome
         if outcome == "raise":
             raise RuntimeError("synthetic provider failure")
+        if outcome == "uncertain":
+            raise NotificationDeliveryUncertain("synthetic uncertain provider state")
         if outcome == "failed":
             return NotificationSendResult.failed(notification.channel)
         return NotificationSendResult.accepted(notification.channel)
@@ -131,6 +158,9 @@ def _make_app(engine: Engine, sender: _RecordingEmailSender) -> FastAPI:
     register_administrative_security_headers(app)
     app.dependency_overrides[get_password_recovery_operations] = lambda: _test_operations(
         engine, sender
+    )
+    app.dependency_overrides[get_public_authentication_request_limiter] = (
+        AllowPublicRequests
     )
     return app
 
@@ -276,6 +306,78 @@ def test_t059_delivery_failure_invalidates_link_and_keeps_the_generic_response(
     ]
 
 
+@pytest.mark.integration
+def test_t097_uncertain_public_delivery_stays_generic_and_unusable(
+    migrated_engine: Engine,
+) -> None:
+    key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
+    protector = AdministrativeEmailProtector(
+        key_ring=key_ring, secret_generator=SystemSecretGenerator()
+    )
+    account_id = _seed_active_account(migrated_engine, protector)
+    sender = _RecordingEmailSender("uncertain")
+    app = _make_app(migrated_engine, sender)
+
+    with TestClient(app) as client:
+        actual = client.post(
+            "/api/admin/password-recovery", json={"email": ACTIVE_EMAIL}
+        )
+        absent = client.post(
+            "/api/admin/password-recovery",
+            json={"email": "synthetic.missing@example.test"},
+        )
+
+    assert (actual.status_code, actual.content, dict(actual.headers)) == (
+        absent.status_code,
+        absent.content,
+        dict(absent.headers),
+    )
+    assert len(sender.notifications) == 1
+    with migrated_engine.connect() as connection:
+        assert connection.execute(
+            select(SecurityLink.status, SecurityLink.delivery_status).where(
+                SecurityLink.admin_account_id == account_id
+            )
+        ).one() == ("active", "uncertain")
+    token_text, token = _captured_token(sender)
+    with migrated_engine.begin() as connection:
+        lifecycle = SecurityLinkLifecycle(
+            store=PostgresSecurityLinkStore(connection),
+            clock=FixedClock(datetime.now(timezone.utc)),
+            secret_generator=SystemSecretGenerator(),
+            protector=SecurityLinkProtector(key_ring=key_ring),
+        )
+        assert lifecycle.inspect(token=token, purpose="password_recovery") is None
+        assert lifecycle.consume(token=token, purpose="password_recovery") is None
+    assert token_text not in actual.text
+
+    sender.outcome = "accepted"
+    with TestClient(app) as client:
+        retry = client.post(
+            "/api/admin/password-recovery", json={"email": ACTIVE_EMAIL}
+        )
+    retry_text, retry_token = _captured_token(sender)
+    assert retry.status_code == actual.status_code
+    assert retry.content == actual.content
+    assert retry_text != token_text
+    with migrated_engine.connect() as connection:
+        rows = connection.execute(
+            select(SecurityLink.status, SecurityLink.delivery_status)
+            .where(SecurityLink.admin_account_id == account_id)
+            .order_by(SecurityLink.security_link_id)
+        ).all()
+    assert rows == [("invalidated", "uncertain"), ("active", "accepted")]
+    with migrated_engine.begin() as connection:
+        lifecycle = SecurityLinkLifecycle(
+            store=PostgresSecurityLinkStore(connection),
+            clock=FixedClock(datetime.now(timezone.utc)),
+            secret_generator=SystemSecretGenerator(),
+            protector=SecurityLinkProtector(key_ring=key_ring),
+        )
+        assert lifecycle.inspect(token=token, purpose="password_recovery") is None
+        assert lifecycle.inspect(token=retry_token, purpose="password_recovery") is not None
+
+
 def test_t059_concurrent_requests_leave_at_most_one_active_recovery_link(
     migrated_engine: Engine,
 ) -> None:
@@ -362,6 +464,9 @@ def test_t058_postgres_resolves_only_current_active_claim_without_issuing_link(
         app.include_router(router)
         register_administrative_security_headers(app)
         app.dependency_overrides[get_password_recovery_operations] = lambda: requester
+        app.dependency_overrides[get_public_authentication_request_limiter] = (
+            AllowPublicRequests
+        )
         with TestClient(app) as client:
             responses = [
                 client.post("/api/admin/password-recovery", json={"email": email})

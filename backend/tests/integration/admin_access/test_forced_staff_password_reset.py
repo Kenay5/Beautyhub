@@ -15,6 +15,7 @@ from backend.app.application.admin_access.account_security import CheckPostRecov
 from backend.app.application.entropy import SystemSecretGenerator
 from backend.app.application.transactional_notifications import EMAIL_CHANNEL, NotificationSendResult, OutboundNotification
 from backend.app.infrastructure.persistence.admin_login_repository import PostgresAdministrativeLoginStore
+from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.models import AdminAccount, AdminAccountSecurityState, AdminAuditEvent, AdminEmailClaim, AdminSession, RecoveryCode, SecurityLink, TotpFactor
 from backend.app.infrastructure.persistence.admin_account_security_repository import PostgresAdministrativeAccountSecurityStore
 from backend.app.infrastructure.security.admin_email_protection import AdministrativeEmailProtector
@@ -39,7 +40,9 @@ from backend.app.web.admin_auth.password_recovery_completion import (
 )
 from backend.app.web.admin_auth.mutation_protection import require_administrative_mutation_protection
 from backend.app.web.admin_auth.security_link_transport import decode_security_link_token
-from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_authenticated_security_message_actor,
+)
 from backend.app.web.admin_security_headers import register_administrative_security_headers
 from backend.tests.integration.admin_access.test_admin_login_session import migrated_engine
 
@@ -99,7 +102,7 @@ def _client(engine: Engine, *, sender: RecordingSender, actor: AdministrativeAct
     app.include_router(completion_router)
     app.include_router(lost_factor_router)
     register_administrative_security_headers(app)
-    app.dependency_overrides[get_authenticated_admin_actor] = lambda: actor
+    app.dependency_overrides[get_authenticated_security_message_actor] = lambda: actor
     app.dependency_overrides[require_administrative_mutation_protection] = lambda: None
     app.dependency_overrides[get_forced_password_reset_operations] = lambda: PostgresForcedPasswordResetOperations(engine=engine, email_sender=sender)
     app.dependency_overrides[get_password_recovery_completion_operations] = lambda: _PostgresPasswordRecoveryCompletionOperation(engine=engine, email_sender=sender)
@@ -258,6 +261,46 @@ def test_t063_failed_delivery_retires_only_link_and_owner_can_issue_full_lifetim
             assert links[1].expires_at - links[1].issued_at == timedelta(minutes=30)
             assert connection.execute(select(AdminAccount.password_hash).where(AdminAccount.admin_account_id == staff_id)).scalar_one() is None
         assert client.post("/api/admin/password-recovery/complete", json={"token": old_token, "newPassword": NEW_PASSWORD}).status_code == 400
+
+
+@pytest.mark.integration
+def test_t097_uncertain_forced_reset_keeps_previous_password_unusable(
+    migrated_engine: Engine,
+) -> None:
+    owner_id, staff_id = _seed(migrated_engine)
+    sender = EmailSimulator(outcome="uncertain")
+    with _client(
+        migrated_engine,
+        sender=sender,  # type: ignore[arg-type]
+        actor=AdministrativeActor(owner_id, "owner"),
+    ) as client:
+        response = _request_reset(client)
+
+    assert response["deliveryStatus"] == "uncertain"
+    assert "password" not in repr(response).lower()
+    assert "token" not in repr(response).lower()
+    assert len(sender.notifications) == 1
+    assert sender.notifications[0].idempotency_key is not None
+    with migrated_engine.connect() as connection:
+        link = connection.execute(
+            select(SecurityLink.status, SecurityLink.delivery_status).where(
+                SecurityLink.admin_account_id == staff_id
+            )
+        ).one()
+        password_hash = connection.execute(
+            select(AdminAccount.password_hash).where(
+                AdminAccount.admin_account_id == staff_id
+            )
+        ).scalar_one()
+        email_lookup = AdministrativeEmailProtector(
+            key_ring=CryptographyKeyRing(load_cryptography_key_configuration()),
+            secret_generator=SystemSecretGenerator(),
+        )
+        assert PostgresAdministrativeLoginStore(connection).load_candidate(
+            email_lookup_digest=email_lookup.protect(STAFF_EMAIL).lookup_digest
+        ) is None
+    assert link == ("active", "uncertain")
+    assert password_hash is None
 
 
 @pytest.mark.integration

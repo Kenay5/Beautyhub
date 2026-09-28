@@ -44,6 +44,15 @@ from backend.app.infrastructure.security.recovery_codes import RecoveryCodeServi
 from backend.app.infrastructure.security.security_notification_delivery_protection import SecurityNotificationDeliveryProtector
 from backend.app.infrastructure.security.totp import TotpAuthenticator
 from backend.app.infrastructure.security.totp_factor_protection import TotpFactorProtector
+from backend.app.application.transactional_notifications import (
+    EMAIL_CHANNEL,
+    NotificationSendResult,
+    OutboundNotification,
+)
+from backend.app.web.admin_auth import totp_replacement_confirmation as totp_confirmation_web
+from backend.app.web.admin_auth.totp_replacement_confirmation import (
+    _PostgresTotpReplacementConfirmationOperation,
+)
 from backend.tests.integration.admin_access.test_admin_login_session import (
     NOW,
     PASSWORD,
@@ -118,7 +127,7 @@ def _seed_recovery_codes(engine: Engine):
         )
 
 
-def _recording(connection, *, failing_audit=False):
+def _recording(connection, *, failing_audit=False, dispatches=None):
     clock, entropy, ring = FixedClock(NOW), SystemSecretGenerator(), _ring()
     security = PostgresAdministrativeAccountSecurityStore(connection)
     email = AdministrativeEmailProtector(key_ring=ring, secret_generator=entropy)
@@ -137,6 +146,7 @@ def _recording(connection, *, failing_audit=False):
         recipients=PostgresAdministrativeLockRecipientDirectory(
             connection=connection, email_protector=email
         ),
+        dispatches=dispatches,
     )
     return clock, entropy, ring, email, audit, notifications, failures
 
@@ -169,9 +179,9 @@ def _prepare(connection, *, proof="totp"):
     return result.manual_key
 
 
-def _confirmation(connection, *, failing_audit=False):
+def _confirmation(connection, *, failing_audit=False, dispatches=None):
     clock, entropy, ring, email, audit, notifications, failures = _recording(
-        connection, failing_audit=failing_audit
+        connection, failing_audit=failing_audit, dispatches=dispatches
     )
     security = PostgresAdministrativeAccountSecurityStore(connection)
     return ConfirmAdministrativeTotpReplacement(
@@ -249,6 +259,51 @@ def test_t068_success_atomically_replaces_factor_codes_consumes_proof_and_closes
         assert connection.execute(
             select(SecurityNotificationDelivery.event, SecurityNotificationDelivery.template)
         ).all() == [("totp_replaced", "totp_replaced_notice")]
+
+
+class _TotpNoticeSender:
+    def __init__(self) -> None:
+        self.notifications: list[OutboundNotification] = []
+
+    def send(self, notification: OutboundNotification) -> NotificationSendResult:
+        self.notifications.append(notification)
+        return NotificationSendResult.accepted(notification.channel)
+
+
+@pytest.mark.integration
+def test_t096_totp_replacement_notice_is_sent_once_to_account_holder(
+    replacement_engine: Engine, monkeypatch
+) -> None:
+    _seed_account(replacement_engine)
+    _seed_recovery_codes(replacement_engine)
+    with replacement_engine.begin() as connection:
+        new_secret = _prepare(connection)
+    monkeypatch.setattr(
+        totp_confirmation_web,
+        "_compose",
+        lambda connection, *, dispatches=None: _confirmation(
+            connection, dispatches=dispatches
+        ),
+    )
+    sender = _TotpNoticeSender()
+
+    outcome = _PostgresTotpReplacementConfirmationOperation(
+        replacement_engine, email_sender=sender
+    ).confirm(account_id=1, totp_code=pyotp.TOTP(new_secret).at(NOW))
+
+    assert outcome.status == "replaced"
+    assert len(sender.notifications) == 1
+    notice = sender.notifications[0]
+    assert notice.channel == EMAIL_CHANNEL
+    assert notice.recipient == "synthetic.owner@example.test"
+    assert "token" not in notice.content.lower()
+    assert "contraseña" not in notice.content.lower()
+    assert "código" not in notice.content.lower()
+    assert all(code not in notice.content for code in outcome.recovery_codes)
+    with replacement_engine.connect() as connection:
+        assert connection.execute(
+            select(SecurityNotificationDelivery.event, SecurityNotificationDelivery.status)
+        ).all() == [("totp_replaced", "accepted")]
 
 
 @pytest.mark.integration

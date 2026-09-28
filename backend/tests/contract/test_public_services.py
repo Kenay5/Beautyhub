@@ -3,12 +3,19 @@
 from collections.abc import Iterable
 from decimal import Decimal
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.application.list_active_services import PublicService
-from backend.app.web.app import create_app
-from backend.app.web.public_services import get_active_service_catalog
-from backend.app.web.public_request_protection import get_public_read_request_limiter
+from backend.app.application.public_request_limit import AllowPublicRequests
+from backend.app.web.public_services import (
+    get_active_service_catalog,
+    router,
+)
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+    get_public_read_request_limiter,
+)
 
 
 class FakeActiveServiceCatalog:
@@ -26,9 +33,11 @@ class AllowReadRequests:
 
 
 def test_public_service_catalog_returns_only_safe_active_service_fields() -> None:
-    app = create_app()
+    app = FastAPI()
+    app.include_router(router)
     app.dependency_overrides[get_active_service_catalog] = FakeActiveServiceCatalog
     app.dependency_overrides[get_public_read_request_limiter] = AllowReadRequests
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
 
     with TestClient(app) as client:
         response = client.get("/api/public/services", params={"branch": "chiconcuac"})
@@ -40,9 +49,11 @@ def test_public_service_catalog_returns_only_safe_active_service_fields() -> Non
 
 
 def test_public_service_catalog_rejects_an_unknown_or_missing_branch() -> None:
-    app = create_app()
+    app = FastAPI()
+    app.include_router(router)
     app.dependency_overrides[get_active_service_catalog] = FakeActiveServiceCatalog
     app.dependency_overrides[get_public_read_request_limiter] = AllowReadRequests
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
 
     with TestClient(app) as client:
         unknown_branch = client.get(

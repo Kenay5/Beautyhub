@@ -28,9 +28,11 @@ from backend.app.web.admin_auth.mutation_protection import (
     get_administrative_mutation_validator,
 )
 from backend.app.web.admin_auth.staff_invitations import (
-    get_authenticated_admin_actor,
     get_staff_invitation_operations,
     router,
+)
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_authenticated_security_message_actor,
 )
 
 
@@ -103,10 +105,11 @@ def _encoded(value: bytes) -> str:
 def _client(operations: RecordingOperations) -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[get_authenticated_admin_actor] = lambda: AdministrativeActor(
+    actor = AdministrativeActor(
         account_id=7,
         role="owner",
     )
+    app.dependency_overrides[get_authenticated_security_message_actor] = lambda: actor
     app.dependency_overrides[get_staff_invitation_operations] = lambda: operations
     app.dependency_overrides[get_administrative_mutation_validator] = lambda: (
         ValidateAdministrativeMutationProtection(

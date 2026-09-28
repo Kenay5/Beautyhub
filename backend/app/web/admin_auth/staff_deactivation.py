@@ -175,11 +175,11 @@ def load_staff_status(
 @router.post("/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_staff(
     response: Response,
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     protection: Annotated[
         None,
         Depends(require_administrative_mutation_protection, scope="function"),
     ],
-    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     operations: Annotated[StaffDeactivationOperations, Depends(get_staff_deactivation_operations)],
 ) -> None:
     del protection

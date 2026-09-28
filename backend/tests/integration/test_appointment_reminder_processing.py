@@ -32,6 +32,9 @@ from backend.app.application.process_claimed_appointment_reminder import (
     ProcessClaimedReminderCommand,
 )
 from backend.app.domain.time import BUSINESS_TIME_ZONE
+from backend.app.domain.authentication.rate_limit import (
+    APPOINTMENT_NOTIFICATION_OPERATION_LIMIT,
+)
 from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.appointment_reminder_processing_repository import (
     PostgresClaimedAppointmentReminderRepository,
@@ -43,6 +46,8 @@ from backend.app.infrastructure.persistence.models import (
     AppointmentReminder,
     NotificationDelivery,
     PrivacyNoticeVersion,
+    RateLimitEvent,
+    RateLimitGuard,
     Service,
 )
 from backend.app.infrastructure.persistence.notification_delivery_result_writer import (
@@ -104,6 +109,67 @@ def test_t093f_channel_results_are_independent_and_never_change_the_appointment(
             ("appointment_reminder", "whatsapp", "accepted"),
         ]
     finally:
+        _cleanup(migrated_engine, fixture)
+
+
+@pytest.mark.integration
+def test_t095_automatic_reminder_dispatch_is_exempt_from_manual_account_budget(
+    migrated_engine: Engine,
+) -> None:
+    fixture = _seed_claimed_reminder(migrated_engine)
+    subject = b"automatic-reminder-subject-000000"[:32]
+    category = APPOINTMENT_NOTIFICATION_OPERATION_LIMIT.category
+    now = fixture["now"]
+    assert isinstance(now, datetime)
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            insert(RateLimitGuard).values(
+                category=category,
+                subject_fingerprint=subject,
+            )
+        )
+        connection.execute(
+            insert(RateLimitEvent),
+            [
+                {
+                    "category": category,
+                    "subject_fingerprint": subject,
+                    "request_fingerprint": index.to_bytes(32, "big"),
+                    "occurred_at": now,
+                }
+                for index in range(1, APPOINTMENT_NOTIFICATION_OPERATION_LIMIT.capacity + 1)
+            ],
+        )
+    processor, email, whatsapp = _processor(migrated_engine, fixture)
+
+    try:
+        result = processor.execute(_process_command(fixture))
+
+        assert result.outcome == "processed"
+        assert len(email.notifications) == len(whatsapp.notifications) == 1
+        with migrated_engine.connect() as connection:
+            assert len(
+                connection.execute(
+                    select(RateLimitEvent.rate_limit_event_id).where(
+                        RateLimitEvent.category == category,
+                        RateLimitEvent.subject_fingerprint == subject,
+                    )
+                ).all()
+            ) == APPOINTMENT_NOTIFICATION_OPERATION_LIMIT.capacity
+    finally:
+        with migrated_engine.begin() as connection:
+            connection.execute(
+                delete(RateLimitEvent).where(
+                    RateLimitEvent.category == category,
+                    RateLimitEvent.subject_fingerprint == subject,
+                )
+            )
+            connection.execute(
+                delete(RateLimitGuard).where(
+                    RateLimitGuard.category == category,
+                    RateLimitGuard.subject_fingerprint == subject,
+                )
+            )
         _cleanup(migrated_engine, fixture)
 
 

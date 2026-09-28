@@ -184,3 +184,56 @@ def test_t017_persists_only_an_encrypted_recipient_and_one_idempotent_intent(
                         )
                     )
                 )
+
+
+@pytest.mark.integration
+def test_t098_late_failure_cannot_revert_an_accepted_security_notice(
+    migrated_engine: Engine,
+) -> None:
+    idempotency_digest: bytes | None = None
+    try:
+        with migrated_engine.begin() as connection:
+            delivery = _recorder(connection, [b"\x19" * 12]).record(
+                event="password_changed",
+                template="password_changed_notice",
+                recipient="synthetic.owner@example.test",
+                idempotency_reference="t098_late_provider_result",
+            )
+            idempotency_digest = connection.execute(
+                select(SecurityNotificationDelivery.idempotency_key_digest).where(
+                    SecurityNotificationDelivery.security_notification_delivery_id
+                    == delivery.delivery_id
+                )
+            ).scalar_one()
+            store = PostgresSecurityNotificationDeliveryStore(connection)
+            assert store.claim_for_dispatch(delivery_id=delivery.delivery_id)
+            store.record_immediate_result(
+                delivery_id=delivery.delivery_id,
+                outcome="accepted",
+            )
+
+        with migrated_engine.begin() as connection:
+            with pytest.raises(RuntimeError):
+                PostgresSecurityNotificationDeliveryStore(
+                    connection
+                ).record_immediate_result(
+                    delivery_id=delivery.delivery_id,
+                    outcome="failed",
+                )
+
+        with migrated_engine.connect() as connection:
+            assert connection.execute(
+                select(SecurityNotificationDelivery.status).where(
+                    SecurityNotificationDelivery.security_notification_delivery_id
+                    == delivery.delivery_id
+                )
+            ).scalar_one() == "accepted"
+    finally:
+        if idempotency_digest is not None:
+            with migrated_engine.begin() as connection:
+                connection.execute(
+                    delete(SecurityNotificationDelivery).where(
+                        SecurityNotificationDelivery.idempotency_key_digest
+                        == idempotency_digest
+                    )
+                )

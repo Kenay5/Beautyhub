@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from backend.app.application.admin_access.rate_limit import (
+    PublicSecurityMessageBudget,
+    SecurityMessageActionBudget,
+)
+
 from backend.app.application.admin_access.security_links import (
     IssuedSecurityLink,
     SecurityLinkLifecycle,
@@ -79,14 +84,27 @@ class PrepareAdministrativePasswordRecovery:
         requester: RequestAdministrativePasswordRecovery,
         store: AdministrativeRecoveryAccountStore,
         link_lifecycle: SecurityLinkLifecycle,
+        security_message_budget: SecurityMessageActionBudget,
+        public_security_message_budget: PublicSecurityMessageBudget | None = None,
     ) -> None:
         self._requester = requester
         self._store = store
         self._link_lifecycle = link_lifecycle
+        self._security_message_budget = security_message_budget
+        self._public_security_message_budget = public_security_message_budget
 
     def prepare(self, *, email: str) -> PreparedPasswordRecoveryLink | None:
         intent = self._requester.request(email=email)
         if intent is None:
+            if self._public_security_message_budget is not None:
+                self._public_security_message_budget.reserve(account_id=None)
+            return None
+        if self._public_security_message_budget is not None:
+            if not self._public_security_message_budget.reserve(
+                account_id=intent.account_id
+            ):
+                return None
+        elif not self._security_message_budget.reserve(account_id=intent.account_id):
             return None
         recipient = self._store.load_active_account_recipient(
             account_id=intent.account_id

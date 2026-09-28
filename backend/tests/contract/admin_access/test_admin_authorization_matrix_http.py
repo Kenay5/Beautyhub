@@ -29,7 +29,16 @@ from backend.app.web.admin_auth.administrative_history import (
 from backend.app.web.admin_auth.mutation_protection import (
     require_administrative_mutation_protection,
 )
-from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.request_rate_limit import (
+    get_authenticated_administrative_request_limiter,
+)
+from backend.app.web.admin_auth.session_context import (
+    get_authenticated_admin_actor,
+    get_revalidated_admin_actor,
+)
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_security_message_action_limiter,
+)
 from backend.app.web.admin_auth.staff_deactivation import (
     get_staff_deactivation_operations,
     router as staff_router,
@@ -132,6 +141,10 @@ class Operations:
 
 
 def _client(*, actor: AdministrativeActor | None, operations: Operations) -> TestClient:
+    class AllowSecurityMessages:
+        def ensure_allowed(self, *, actor: AdministrativeActor) -> None:
+            return None
+
     app = FastAPI()
     app.include_router(invitations_router)
     app.include_router(staff_router)
@@ -141,6 +154,13 @@ def _client(*, actor: AdministrativeActor | None, operations: Operations) -> Tes
     app.dependency_overrides[get_administrative_history_operations] = lambda: operations
     app.dependency_overrides[require_administrative_mutation_protection] = lambda: None
     app.dependency_overrides[get_authenticated_admin_actor] = lambda: _resolve_actor(actor)
+    app.dependency_overrides[get_revalidated_admin_actor] = lambda: _resolve_actor(actor)
+    app.dependency_overrides[get_authenticated_administrative_request_limiter] = (
+        lambda: AllowSecurityMessages()
+    )
+    app.dependency_overrides[get_security_message_action_limiter] = (
+        lambda: AllowSecurityMessages()
+    )
     return TestClient(app)
 
 

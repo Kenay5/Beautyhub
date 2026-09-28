@@ -16,6 +16,7 @@ from backend.app.application.admin_access.staff_invitation import (
 from backend.app.application.clock import FixedClock
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
+    NotificationDeliveryUncertain,
     NotificationSendResult,
     OutboundNotification,
 )
@@ -30,12 +31,16 @@ class RecordingDeliveryStateStore:
     def __init__(self) -> None:
         self.accepted: list[tuple[int, datetime]] = []
         self.failed: list[tuple[int, datetime]] = []
+        self.uncertain: list[tuple[int, datetime]] = []
 
     def mark_delivery_accepted(self, *, link_id: int, current_time: datetime) -> None:
         self.accepted.append((link_id, current_time))
 
     def invalidate_failed_delivery(self, *, link_id: int, current_time: datetime) -> None:
         self.failed.append((link_id, current_time))
+
+    def mark_delivery_uncertain(self, *, link_id: int, current_time: datetime) -> None:
+        self.uncertain.append((link_id, current_time))
 
 
 class RecordingAuditStore:
@@ -53,6 +58,15 @@ class FailingEmailSender:
     def send(self, notification: OutboundNotification) -> NotificationSendResult:
         self.notifications.append(notification)
         return NotificationSendResult.failed(EMAIL_CHANNEL)
+
+
+class UncertainEmailSender:
+    def __init__(self) -> None:
+        self.notifications: list[OutboundNotification] = []
+
+    def send(self, notification: OutboundNotification) -> NotificationSendResult:
+        self.notifications.append(notification)
+        raise NotificationDeliveryUncertain("provider state unavailable")
 
 
 def _invitation() -> PendingStaffInvitation:
@@ -105,3 +119,28 @@ def test_t036_failed_delivery_invalidates_only_the_link_and_returns_a_safe_owner
     )
     assert TOKEN.hex() not in repr(event)
     assert "opaque-test-token" not in repr(event)
+
+
+def test_t097_uncertain_delivery_is_not_reported_as_success_or_failure() -> None:
+    delivery_state = RecordingDeliveryStateStore()
+    audit_store = RecordingAuditStore()
+    sender = UncertainEmailSender()
+
+    outcome = DeliverStaffInvitation(
+        delivery_state_store=delivery_state,
+        email_sender=sender,
+        audit=RecordAdministrativeAuditEvent(
+            store=audit_store,
+            clock=FixedClock(NOW),
+        ),
+        clock=FixedClock(NOW),
+    ).deliver(invitation=_invitation(), content="synthetic link content")
+
+    assert not outcome.accepted
+    assert outcome.uncertain
+    assert outcome.detail == "No fue posible confirmar el envío. Puedes emitir un enlace nuevo."
+    assert delivery_state.uncertain == [(23, NOW)]
+    assert delivery_state.failed == []
+    assert audit_store.events == []
+    assert sender.notifications[0].idempotency_key == "security-link:23"
+    assert "security-link:23" not in repr(sender.notifications[0])

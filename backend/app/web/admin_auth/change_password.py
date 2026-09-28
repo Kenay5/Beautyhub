@@ -15,6 +15,7 @@ from backend.app.application.admin_access.account_security import (
     EnsureAdministrativeCredentialCheck,
     RecordAdministrativeCredentialFailure,
     RecordProtectedAdministrativeCredentialFailure,
+    SecurityNotificationDispatch,
 )
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.authorization import AdministrativeActor
@@ -47,6 +48,7 @@ from backend.app.infrastructure.settings import load_cryptography_key_configurat
 from backend.app.web.admin_auth.login import ADMINISTRATIVE_SESSION_COOKIE
 from backend.app.web.admin_auth.mutation_protection import require_administrative_mutation_protection
 from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 router = APIRouter(prefix="/api/admin/password", tags=["admin-password"])
@@ -102,13 +104,21 @@ class _PostgresPasswordChangeOperation:
         totp_code: str,
         new_password: str,
     ) -> str:
+        dispatches: list[SecurityNotificationDispatch] = []
         with self._engine.begin() as connection:
-            outcome = _compose_change_password(connection).change(
+            outcome = _compose_change_password(
+                connection, dispatches=dispatches
+            ).change(
                 account_id=account_id,
                 current_password=current_password,
                 totp_code=totp_code,
                 new_password=new_password,
             )
+        deliver_security_notices(
+            engine=self._engine,
+            email_sender=self._email_sender,
+            notices=dispatches,
+        )
         if outcome.status == "changed":
             assert outcome.notification_recipient is not None
             assert outcome.notification_delivery_id is not None
@@ -142,7 +152,11 @@ class _PostgresPasswordChangeOperation:
             _LOGGER.error("administrative password notice status was not recorded")
 
 
-def _compose_change_password(connection: Connection) -> ChangeAdministrativePassword:
+def _compose_change_password(
+    connection: Connection,
+    *,
+    dispatches: list[SecurityNotificationDispatch] | None = None,
+) -> ChangeAdministrativePassword:
     clock = SystemClock()
     entropy = SystemSecretGenerator()
     key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
@@ -173,6 +187,7 @@ def _compose_change_password(connection: Connection) -> ChangeAdministrativePass
             recipients=PostgresAdministrativeLockRecipientDirectory(
                 connection=connection, email_protector=email_protector
             ),
+            dispatches=dispatches,
         ),
         password_hasher=AdministrativePasswordHasher(),
         factor_protector=TotpFactorProtector(
@@ -194,8 +209,8 @@ def _compose_change_password(connection: Connection) -> ChangeAdministrativePass
 def change_administrative_password(
     body: PasswordChangeBody,
     response: Response,
-    protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
     actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
+    protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
     operation: Annotated[PasswordChangeOperation, Depends(get_password_change_operation, scope="function")],
 ) -> Response:
     del protection

@@ -2,15 +2,20 @@
 
 from datetime import date, time
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.application.clock import FixedClock
-from backend.app.web.app import create_app
+from backend.app.application.public_request_limit import AllowPublicRequests
 from backend.app.web.public_availability import (
     get_clock,
     get_public_availability_reader,
+    router,
 )
-from backend.app.web.public_request_protection import get_public_read_request_limiter
+from backend.app.web.public_request_protection import (
+    get_public_authentication_request_limiter,
+    get_public_read_request_limiter,
+)
 
 
 class FakePublicAvailabilityReader:
@@ -32,9 +37,11 @@ class AllowReadRequests:
 
 
 def test_public_availability_returns_only_safe_bookable_start_fields() -> None:
-    app = create_app()
+    app = FastAPI()
+    app.include_router(router)
     app.dependency_overrides[get_public_availability_reader] = FakePublicAvailabilityReader
     app.dependency_overrides[get_public_read_request_limiter] = AllowReadRequests
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
     app.dependency_overrides[get_clock] = lambda: FixedClock(
         _business_datetime(date(2030, 6, 15), time(10))
     )
@@ -90,9 +97,11 @@ def test_public_availability_returns_only_safe_bookable_start_fields() -> None:
 
 
 def test_public_availability_returns_one_sanitized_error_for_invalid_input() -> None:
-    app = create_app()
+    app = FastAPI()
+    app.include_router(router)
     app.dependency_overrides[get_public_availability_reader] = FakePublicAvailabilityReader
     app.dependency_overrides[get_public_read_request_limiter] = AllowReadRequests
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
     app.dependency_overrides[get_clock] = lambda: FixedClock(
         _business_datetime(date(2030, 6, 15), time(10))
     )

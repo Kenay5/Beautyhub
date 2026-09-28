@@ -127,6 +127,7 @@ class PostgresSecurityLinkStore(SecurityLinkStore):
                 SecurityLinkModel.token_digest == token_digest,
                 SecurityLinkModel.purpose == purpose,
                 SecurityLinkModel.status == "active",
+                SecurityLinkModel.delivery_status == "accepted",
                 SecurityLinkModel.expires_at > now,
             )
         ).one_or_none()
@@ -159,6 +160,7 @@ class PostgresSecurityLinkStore(SecurityLinkStore):
                 SecurityLinkModel.token_digest == token_digest,
                 SecurityLinkModel.purpose == purpose,
                 SecurityLinkModel.status == "active",
+                SecurityLinkModel.delivery_status == "accepted",
                 SecurityLinkModel.expires_at > now,
             )
             .values(status="consumed", consumed_at=now, updated_at=now)
@@ -176,29 +178,56 @@ class PostgresSecurityLinkStore(SecurityLinkStore):
         return None
 
     def mark_delivery_accepted(self, *, link_id: int, current_time: datetime) -> None:
-        """Persist provider acceptance only while this exact link remains active."""
+        """Accept only a still-current, unexpired link; never revive a retired one."""
 
+        account_id = self._lock_account_for_link(link_id)
+        if account_id is None:
+            return
         self._connection.execute(
             update(SecurityLinkModel)
             .where(
                 SecurityLinkModel.security_link_id == link_id,
+                SecurityLinkModel.admin_account_id == account_id,
                 SecurityLinkModel.status == "active",
-                SecurityLinkModel.delivery_status == "pending",
+                SecurityLinkModel.delivery_status.in_(("pending", "uncertain")),
+                SecurityLinkModel.expires_at > current_time,
             )
             .values(delivery_status="accepted", updated_at=current_time)
+        )
+
+    def mark_delivery_uncertain(self, *, link_id: int, current_time: datetime) -> None:
+        """Keep an unresolved delivery unusable and only while its link is current."""
+
+        account_id = self._lock_account_for_link(link_id)
+        if account_id is None:
+            return
+        self._connection.execute(
+            update(SecurityLinkModel)
+            .where(
+                SecurityLinkModel.security_link_id == link_id,
+                SecurityLinkModel.admin_account_id == account_id,
+                SecurityLinkModel.status == "active",
+                SecurityLinkModel.delivery_status == "pending",
+                SecurityLinkModel.expires_at > current_time,
+            )
+            .values(delivery_status="uncertain", updated_at=current_time)
         )
 
     def invalidate_failed_delivery(
         self, *, link_id: int, current_time: datetime
     ) -> None:
-        """Invalidate only a still-active failed link and record its safe failure."""
+        """Apply immediate or late failure without reviving or touching replacements."""
 
-        self._connection.execute(
+        account_id = self._lock_account_for_link(link_id)
+        if account_id is None:
+            return
+        failed = self._connection.execute(
             update(SecurityLinkModel)
             .where(
                 SecurityLinkModel.security_link_id == link_id,
+                SecurityLinkModel.admin_account_id == account_id,
                 SecurityLinkModel.status == "active",
-                SecurityLinkModel.delivery_status == "pending",
+                SecurityLinkModel.delivery_status.in_(("pending", "uncertain", "accepted")),
             )
             .values(
                 status="invalidated",
@@ -206,7 +235,27 @@ class PostgresSecurityLinkStore(SecurityLinkStore):
                 invalidated_at=current_time,
                 updated_at=current_time,
             )
-        )
+            .returning(SecurityLinkModel.admin_account_id, SecurityLinkModel.purpose)
+        ).one_or_none()
+        if failed is not None:
+            self._pending_state.discard_for_failed_link(
+                account_id=failed.admin_account_id,
+                purpose=failed.purpose,
+                current_time=current_time,
+            )
+
+    def _lock_account_for_link(self, link_id: int) -> int | None:
+        account_id = self._connection.execute(
+            select(SecurityLinkModel.admin_account_id)
+            .where(SecurityLinkModel.security_link_id == link_id)
+        ).scalar_one_or_none()
+        if account_id is None:
+            return None
+        return self._connection.execute(
+            select(AdminAccount.admin_account_id)
+            .where(AdminAccount.admin_account_id == account_id)
+            .with_for_update()
+        ).scalar_one_or_none()
 
     def _expire_matching_link(
         self,

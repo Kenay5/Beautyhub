@@ -15,6 +15,7 @@ from backend.app.application.admin_access.account_security import (
     EnsureAdministrativeCredentialCheck,
     RecordAdministrativeCredentialFailure,
     RecordProtectedAdministrativeCredentialFailure,
+    SecurityNotificationDispatch,
 )
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.authorization import AdministrativeActor
@@ -63,6 +64,7 @@ from backend.app.web.admin_auth.login import ADMINISTRATIVE_SESSION_COOKIE
 from backend.app.web.admin_auth.mutation_protection import require_administrative_mutation_protection
 from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
 from backend.app.web.admin_auth.security_link_transport import SecurityLinkTokenBody
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 router = APIRouter(prefix="/api/admin/totp-replacement", tags=["admin-totp-replacement"])
@@ -126,8 +128,16 @@ class _PostgresTotpReplacementConfirmationOperation:
         self._email_sender = email_sender or EmailSimulator(outcome="accepted")
 
     def confirm(self, *, account_id: int, totp_code: str) -> TotpReplacementConfirmationOutcome:
+        dispatches: list[SecurityNotificationDispatch] = []
         with self._engine.begin() as connection:
-            outcome = _compose(connection).confirm(account_id=account_id, totp_code=totp_code)
+            outcome = _compose(
+                connection, dispatches=dispatches
+            ).confirm(account_id=account_id, totp_code=totp_code)
+        deliver_security_notices(
+            engine=self._engine,
+            email_sender=self._email_sender,
+            notices=dispatches,
+        )
         if outcome.status == "replaced":
             assert outcome.notification_delivery_id is not None
             assert outcome.notification_recipient is not None
@@ -158,6 +168,7 @@ class _PostgresTotpReplacementConfirmationOperation:
     def confirm_lost_factor(
         self, *, token: bytes, totp_code: str
     ) -> TotpReplacementConfirmationOutcome:
+        dispatches: list[SecurityNotificationDispatch] = []
         try:
             with self._engine.begin() as connection:
                 clock = SystemClock()
@@ -169,13 +180,20 @@ class _PostgresTotpReplacementConfirmationOperation:
                     secret_generator=entropy,
                     protector=SecurityLinkProtector(key_ring=key_ring),
                 )
-                outcome = _compose(connection).confirm_lost_factor(
+                outcome = _compose(
+                    connection, dispatches=dispatches
+                ).confirm_lost_factor(
                     token=token,
                     link_lifecycle=links,
                     totp_code=totp_code,
                 )
         except LostFactorLinkConsumptionConflict:
-            return TotpReplacementConfirmationOutcome("unavailable")
+            outcome = TotpReplacementConfirmationOutcome("unavailable")
+        deliver_security_notices(
+            engine=self._engine,
+            email_sender=self._email_sender,
+            notices=dispatches,
+        )
         if outcome.status == "replaced":
             assert outcome.notification_delivery_id is not None
             assert outcome.notification_recipient is not None
@@ -201,7 +219,11 @@ class _PostgresTotpReplacementConfirmationOperation:
             _LOGGER.error("administrative TOTP replacement notice status was not recorded")
 
 
-def _compose(connection: Connection) -> ConfirmAdministrativeTotpReplacement:
+def _compose(
+    connection: Connection,
+    *,
+    dispatches: list[SecurityNotificationDispatch] | None = None,
+) -> ConfirmAdministrativeTotpReplacement:
     clock = SystemClock()
     entropy = SystemSecretGenerator()
     key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
@@ -225,6 +247,7 @@ def _compose(connection: Connection) -> ConfirmAdministrativeTotpReplacement:
                 connection=connection,
                 email_protector=email_protector,
             ),
+            dispatches=dispatches,
         ),
         pending_factor_protector=PendingTotpProtector(key_ring=key_ring, secret_generator=entropy),
         factor_protector=TotpFactorProtector(key_ring=key_ring, secret_generator=entropy),
@@ -246,8 +269,8 @@ def _compose(connection: Connection) -> ConfirmAdministrativeTotpReplacement:
 def confirm_administrative_totp_replacement(
     body: TotpReplacementConfirmationBody,
     response: Response,
-    protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
     actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
+    protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
     operation: Annotated[TotpReplacementConfirmationOperation, Depends(get_totp_replacement_confirmation_operation, scope="function")],
 ) -> TotpReplacementConfirmationResponse | JSONResponse:
     del protection

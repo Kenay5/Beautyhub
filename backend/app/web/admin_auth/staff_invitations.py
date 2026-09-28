@@ -15,6 +15,10 @@ from backend.app.application.admin_access.authorization import (
     AdministrativeAuthorizationError,
 )
 from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
+from backend.app.application.admin_access.security_notification_deliveries import (
+    RecordSecurityNotificationDelivery,
+)
+from backend.app.application.admin_access.account_security import SecurityNotificationDispatch
 from backend.app.application.admin_access.staff_invitation import (
     CreateStaffInvitation,
     DeliverStaffInvitation,
@@ -31,7 +35,13 @@ from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.admin_audit_repository import (
     PostgresAdministrativeAuditStore,
 )
+from backend.app.infrastructure.persistence.admin_lock_recipient_repository import (
+    PostgresAdministrativeLockRecipientDirectory,
+)
 from backend.app.infrastructure.persistence.database import create_postgres_engine
+from backend.app.infrastructure.persistence.security_notification_delivery_repository import (
+    PostgresSecurityNotificationDeliveryStore,
+)
 from backend.app.infrastructure.persistence.security_link_repository import (
     PostgresSecurityLinkStore,
 )
@@ -45,6 +55,9 @@ from backend.app.infrastructure.security.cryptography_key_ring import Cryptograp
 from backend.app.infrastructure.security.security_link_protection import (
     SecurityLinkProtector,
 )
+from backend.app.infrastructure.security.security_notification_delivery_protection import (
+    SecurityNotificationDeliveryProtector,
+)
 from backend.app.infrastructure.settings import (
     load_cryptography_key_configuration,
     load_settings,
@@ -54,6 +67,10 @@ from backend.app.web.admin_auth.mutation_protection import (
     require_administrative_mutation_protection,
 )
 from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_authenticated_security_message_actor,
+)
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
 
 
 router = APIRouter(prefix="/api/admin/staff-invitations", tags=["admin-staff-invitations"])
@@ -94,6 +111,7 @@ class PostgresStaffInvitationOperations:
         self._key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
 
     def invite(self, *, actor: AdministrativeActor, email: str) -> StaffInvitationDeliveryOutcome:
+        notices: list[SecurityNotificationDispatch] = []
         with self._engine.begin() as connection:
             invitation = CreateStaffInvitation(
                 store=PostgresStaffInvitationStore(connection),
@@ -101,6 +119,35 @@ class PostgresStaffInvitationOperations:
                 link_lifecycle=self._link_lifecycle(connection),
                 audit=self._audit(connection),
             ).invite(actor=actor, email=email)
+            owner_email = PostgresAdministrativeLockRecipientDirectory(
+                connection=connection,
+                email_protector=self._email_protector(),
+            ).lock_notification_recipients(account_id=actor.account_id)[0]
+            intent = RecordSecurityNotificationDelivery(
+                store=PostgresSecurityNotificationDeliveryStore(connection),
+                protector=SecurityNotificationDeliveryProtector(
+                    key_ring=self._key_ring,
+                    secret_generator=SystemSecretGenerator(),
+                ),
+            ).record(
+                event="staff_invited",
+                template="staff_invitation_notice",
+                recipient=owner_email,
+                idempotency_reference=f"staff_invitation:{invitation.account_id}",
+            )
+            notices.append(
+                SecurityNotificationDispatch(
+                    delivery_id=intent.delivery_id,
+                    event="staff_invited",
+                    template="staff_invitation_notice",
+                    recipient=owner_email,
+                )
+            )
+        deliver_security_notices(
+            engine=self._engine,
+            email_sender=self._email_sender or EmailSimulator(outcome="accepted"),
+            notices=notices,
+        )
         return self._deliver(invitation)
 
     def resend(self, *, actor: AdministrativeActor) -> StaffInvitationDeliveryOutcome:
@@ -171,7 +218,9 @@ def get_staff_invitation_operations() -> Iterator[StaffInvitationOperations]:
 
 def _response(outcome: StaffInvitationDeliveryOutcome) -> StaffInvitationResponse:
     return StaffInvitationResponse(
-        delivery_status="accepted" if outcome.accepted else "failed",
+        delivery_status=(
+            "accepted" if outcome.accepted else "uncertain" if outcome.uncertain else "failed"
+        ),
         detail=outcome.detail,
     )
 
@@ -185,11 +234,11 @@ def _translate(error: Exception) -> HTTPException:
 @router.post("", response_model=StaffInvitationResponse, status_code=status.HTTP_201_CREATED)
 def invite_staff(
     body: StaffInvitationBody,
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_security_message_actor)],
     protection: Annotated[
         None,
         Depends(require_administrative_mutation_protection, scope="function"),
     ],
-    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     operations: Annotated[StaffInvitationOperations, Depends(get_staff_invitation_operations)],
 ) -> StaffInvitationResponse:
     del protection
@@ -201,11 +250,11 @@ def invite_staff(
 
 @router.post("/resend", response_model=StaffInvitationResponse)
 def resend_staff_invitation(
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_security_message_actor)],
     protection: Annotated[
         None,
         Depends(require_administrative_mutation_protection, scope="function"),
     ],
-    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     operations: Annotated[StaffInvitationOperations, Depends(get_staff_invitation_operations)],
 ) -> StaffInvitationResponse:
     del protection
@@ -217,11 +266,11 @@ def resend_staff_invitation(
 
 @router.post("/cancel", status_code=status.HTTP_204_NO_CONTENT)
 def cancel_staff_invitation(
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     protection: Annotated[
         None,
         Depends(require_administrative_mutation_protection, scope="function"),
     ],
-    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     operations: Annotated[StaffInvitationOperations, Depends(get_staff_invitation_operations)],
 ) -> None:
     del protection

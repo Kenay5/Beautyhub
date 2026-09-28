@@ -99,6 +99,9 @@ class AbandonStaffActivationSetup:
 class StaffActivationOutcome:
     recovery_codes: tuple[str, ...] = field(default=(), repr=False)
     rejection: str | None = None
+    account_id: int | None = field(default=None, repr=False)
+    notification_delivery_id: int | None = field(default=None, repr=False)
+    notification_recipient: str | None = field(default=None, repr=False)
 
 class CompleteStaffActivation:
     def __init__(self, *, link_lifecycle: SecurityLinkLifecycle, store: StaffActivationStore, blocked_passwords: BlockedPasswordChecker, password_hasher: AdministrativePasswordHasher, pending_totp_protector: PendingTotpProtector, factor_protector: TotpFactorProtector, totp: TotpAuthenticator, recovery_codes: RecoveryCodeService, audit: RecordAdministrativeAuditEvent, clock: Clock) -> None:
@@ -129,4 +132,7 @@ class CompleteStaffActivation:
             self._store.discard_pending(candidate=candidate,current_time=now); return StaffActivationOutcome(rejection="unavailable")
         self._store.activate(candidate=candidate,password_hash=self._hasher.hash_password(password),factor=factor,period_counter=period,recovery_codes=records,current_time=now)
         self._audit.record(actor_account_id=candidate.account_id,action="account_activation",result="succeeded")
-        return StaffActivationOutcome(recovery_codes=tuple(item.display_value for item in generated))
+        return StaffActivationOutcome(
+            recovery_codes=tuple(item.display_value for item in generated),
+            account_id=candidate.account_id,
+        )

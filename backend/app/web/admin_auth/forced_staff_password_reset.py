@@ -16,6 +16,7 @@ from backend.app.application.admin_access.force_staff_password_reset import Forc
 from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
 from backend.app.application.clock import SystemClock
 from backend.app.application.entropy import SystemSecretGenerator
+from backend.app.application.security_link_delivery import send_security_link_notification
 from backend.app.application.transactional_notifications import EMAIL_CHANNEL, OutboundNotification, TransactionalNotificationPort
 from backend.app.infrastructure.email_simulator import EmailSimulator
 from backend.app.infrastructure.persistence.admin_audit_repository import PostgresAdministrativeAuditStore
@@ -28,7 +29,9 @@ from backend.app.infrastructure.security.security_link_protection import Securit
 from backend.app.infrastructure.settings import load_cryptography_key_configuration, load_settings
 from backend.app.web.admin_auth.mutation_protection import require_administrative_mutation_protection
 from backend.app.web.admin_auth.security_link_transport import security_link_fragment
-from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
+from backend.app.web.admin_auth.security_message_rate_limit import (
+    get_authenticated_security_message_actor,
+)
 
 
 router = APIRouter(prefix="/api/admin/staff-password-reset", tags=["admin-staff-password-reset"])
@@ -39,7 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class ForcedPasswordResetResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    delivery_status: Literal["accepted", "failed"] = Field(serialization_alias="deliveryStatus")
+    delivery_status: Literal["accepted", "failed", "uncertain"] = Field(serialization_alias="deliveryStatus")
     detail: str | None = None
 
 
@@ -83,11 +86,28 @@ class PostgresForcedPasswordResetOperations:
             "Este enlace es válido durante 30 minutos: /admin/password-recovery"
             + security_link_fragment(reset.issued_link.token)
         )
-        try:
-            sent = self._email_sender.send(
-                OutboundNotification(channel=EMAIL_CHANNEL, recipient=reset.recipient_email, content=content)
+        link_id = reset.issued_link.stored_link.link_id
+        sent = send_security_link_notification(
+            sender=self._email_sender,
+            notification=OutboundNotification(
+                channel=EMAIL_CHANNEL,
+                recipient=reset.recipient_email,
+                content=content,
+                idempotency_key=f"security-link:{link_id}",
             )
-        except Exception:
+        )
+        if sent.outcome == "uncertain":
+            with self._engine.begin() as connection:
+                PostgresSecurityLinkStore(connection).mark_delivery_uncertain(
+                    link_id=link_id,
+                    current_time=self._clock.now(),
+                )
+            return ForcedPasswordResetResponse(
+                delivery_status="uncertain",
+                detail="No fue posible confirmar el envío. La contraseña anterior ya no permite iniciar sesión. Puedes emitir un enlace nuevo.",
+            )
+
+        if sent.outcome == "failed":
             _LOGGER.warning("forced staff password reset delivery failed")
             self._record_failed_delivery(reset)
             return ForcedPasswordResetResponse(
@@ -95,12 +115,6 @@ class PostgresForcedPasswordResetOperations:
                 detail="No se pudo enviar el enlace. La contraseña anterior ya no permite iniciar sesión. Puedes emitir un enlace nuevo.",
             )
 
-        if sent.channel != EMAIL_CHANNEL or sent.outcome != "accepted":
-            self._record_failed_delivery(reset)
-            return ForcedPasswordResetResponse(
-                delivery_status="failed",
-                detail="No se pudo enviar el enlace. La contraseña anterior ya no permite iniciar sesión. Puedes emitir un enlace nuevo.",
-            )
         with self._engine.begin() as connection:
             PostgresSecurityLinkStore(connection).mark_delivery_accepted(
                 link_id=reset.issued_link.stored_link.link_id,
@@ -135,8 +149,8 @@ def get_forced_password_reset_operations() -> Iterator[ForcedPasswordResetOperat
 
 @router.post("", response_model=ForcedPasswordResetResponse)
 def force_staff_password_reset(
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_security_message_actor)],
     protection: Annotated[None, Depends(require_administrative_mutation_protection, scope="function")],
-    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     operations: Annotated[ForcedPasswordResetOperations, Depends(get_forced_password_reset_operations)],
 ) -> ForcedPasswordResetResponse:
     del protection

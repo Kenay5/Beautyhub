@@ -10,9 +10,10 @@ from threading import Barrier
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, insert, select, update
+from sqlalchemy import Engine, insert, select, text, update
 
 from backend.app.application.transactional_notifications import EMAIL_CHANNEL, NotificationSendResult, OutboundNotification
+from backend.app.application.public_request_limit import AllowPublicRequests
 from backend.app.application.admin_access.account_security import CheckPostRecoveryFactorReplacement
 from backend.app.infrastructure.persistence.admin_account_security_repository import PostgresAdministrativeAccountSecurityStore
 from backend.app.application.entropy import SystemSecretGenerator
@@ -28,12 +29,33 @@ from backend.app.web.admin_auth import password_recovery_completion as completio
 from backend.app.web.admin_auth.security_link_transport import decode_security_link_token
 from backend.app.web.admin_security_headers import register_administrative_security_headers
 from backend.tests.integration.admin_access.test_admin_login_session import migrated_engine
+from backend.app.web.public_request_protection import get_public_authentication_request_limiter
 
 
 EMAIL = "synthetic.recovery@example.test"
 OLD_PASSWORD = "synthetic previous password phrase"
 NEW_PASSWORD = "synthetic replacement phrase"
 FACTOR_SECRET = b"JBSWY3DPEHPK3PXP"
+
+
+@pytest.fixture(autouse=True)
+def _reset_non_cascading_recovery_test_state(migrated_engine: Engine) -> None:
+    """Keep T060 cases isolated from the durable T093 budgets and notice idempotency rows."""
+
+    with migrated_engine.begin() as connection:
+        connection.execute(
+            text(
+                "DELETE FROM rate_limit_events "
+                "WHERE category = 'security_message_action'"
+            )
+        )
+        connection.execute(
+            text(
+                "DELETE FROM rate_limit_guards "
+                "WHERE category = 'security_message_action'"
+            )
+        )
+        connection.execute(text("TRUNCATE TABLE security_notification_deliveries"))
 
 
 class RecordingSender:
@@ -105,6 +127,7 @@ def _client(engine: Engine, sender: RecordingSender) -> TestClient:
     app.include_router(completion_router)
     register_administrative_security_headers(app)
     app.dependency_overrides[get_password_recovery_operations] = lambda: PostgresPasswordRecoveryOperations(engine=engine, email_sender=sender)
+    app.dependency_overrides[get_public_authentication_request_limiter] = AllowPublicRequests
     app.dependency_overrides[get_password_recovery_completion_operations] = lambda: _PostgresPasswordRecoveryCompletionOperation(engine=engine, email_sender=sender)
     return TestClient(app)
 

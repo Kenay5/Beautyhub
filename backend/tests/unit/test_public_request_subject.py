@@ -60,3 +60,40 @@ def test_t067_malformed_forwarded_chain_falls_back_to_trusted_peer() -> None:
     )
 
     assert resolved == "10.0.0.5"
+
+
+def test_t091_forged_forwarded_headers_do_not_change_an_untrusted_origin_fingerprint() -> None:
+    protector = PublicRequestSubjectProtector(key_ring=KEY_RING)
+    networks = (ip_network("10.0.0.0/8"),)
+
+    forged_a = resolve_public_client_ip(
+        direct_host="198.51.100.20",
+        forwarded_for="203.0.113.99",
+        trusted_proxy_networks=networks,
+    )
+    forged_b = resolve_public_client_ip(
+        direct_host="198.51.100.20",
+        forwarded_for="192.0.2.44, 10.0.0.4",
+        trusted_proxy_networks=networks,
+    )
+
+    assert protector.fingerprint_ip(forged_a) == protector.fingerprint_ip(forged_b)
+
+
+def test_t091_trusted_proxy_chain_produces_a_stable_origin_fingerprint() -> None:
+    protector = PublicRequestSubjectProtector(key_ring=KEY_RING)
+    networks = (ip_network("10.0.0.0/8"),)
+
+    first = resolve_public_client_ip(
+        direct_host="10.0.0.5",
+        forwarded_for="203.0.113.99, 198.51.100.20, 10.0.0.4",
+        trusted_proxy_networks=networks,
+    )
+    equivalent = resolve_public_client_ip(
+        direct_host="10.0.0.5",
+        forwarded_for="198.51.100.20, 10.0.0.4",
+        trusted_proxy_networks=networks,
+    )
+
+    assert first == equivalent == "198.51.100.20"
+    assert protector.fingerprint_ip(first) == protector.fingerprint_ip(equivalent)

@@ -11,6 +11,7 @@ from backend.app.application.admin_access.security_links import (
     SecurityLinkLifecycle,
 )
 from backend.app.application.clock import Clock
+from backend.app.application.security_link_delivery import send_security_link_notification
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
     OutboundNotification,
@@ -101,11 +102,14 @@ class DeliverOwnerActivationLink:
     def deliver(self, *, prepared_link: PreparedOwnerActivationLink, content: str) -> bool:
         """Persist the provider result and return whether the link was accepted."""
 
-        result = self._email_sender.send(
-            OutboundNotification(
+        link_id = prepared_link.issued_link.stored_link.link_id
+        result = send_security_link_notification(
+            sender=self._email_sender,
+            notification=OutboundNotification(
                 channel=EMAIL_CHANNEL,
                 recipient=prepared_link.recipient.email,
                 content=content,
+                idempotency_key=f"security-link:{link_id}",
             )
         )
         current_time = normalize_instant(self._clock.now())
@@ -116,8 +120,14 @@ class DeliverOwnerActivationLink:
             )
             return True
 
+        if result.outcome == "uncertain":
+            mark_uncertain = getattr(self._delivery_state_store, "mark_delivery_uncertain", None)
+            if callable(mark_uncertain):
+                mark_uncertain(link_id=link_id, current_time=current_time)
+            return False
+
         self._delivery_state_store.invalidate_failed_delivery(
-            link_id=prepared_link.issued_link.stored_link.link_id,
+            link_id=link_id,
             current_time=current_time,
         )
         return False

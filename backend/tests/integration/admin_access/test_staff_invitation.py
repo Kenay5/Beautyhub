@@ -16,6 +16,12 @@ from sqlalchemy import Engine, text
 
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.authorization import AdministrativeActor
+from backend.app.application.admin_access.account_security import SecurityNotificationDispatch
+from backend.app.application.transactional_notifications import (
+    EMAIL_CHANNEL,
+    NotificationSendResult,
+    OutboundNotification,
+)
 from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
 from backend.app.application.admin_access.staff_invitation import (
     CreateStaffInvitation,
@@ -46,8 +52,11 @@ from backend.app.infrastructure.security.security_link_protection import (
 from backend.app.infrastructure.settings import (
     CryptographyKeyConfiguration,
     SecretValue,
+    load_cryptography_key_configuration,
     load_test_database_url,
 )
+from backend.app.web.admin_auth.security_notice_delivery import deliver_security_notices
+from backend.app.web.admin_auth.staff_invitations import PostgresStaffInvitationOperations
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
@@ -73,7 +82,7 @@ def _reset_admin_fixture_state(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE admin_accounts, owner_bootstrap_state "
+                "TRUNCATE TABLE security_notification_deliveries, admin_accounts, owner_bootstrap_state "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -259,6 +268,120 @@ def test_t035_owner_creates_exactly_one_pending_staff_without_access(
     )
 
 
+class _InvitationNoticeSender:
+    def __init__(self, first_notice_outcome: str = "accepted") -> None:
+        self.notifications: list[OutboundNotification] = []
+        self.first_notice_outcome = first_notice_outcome
+
+    def send(self, notification: OutboundNotification) -> NotificationSendResult:
+        self.notifications.append(notification)
+        if len(self.notifications) == 1 and self.first_notice_outcome == "exception":
+            raise RuntimeError("provider password=must-not-be-recorded")
+        if len(self.notifications) == 1 and self.first_notice_outcome == "failed":
+            return NotificationSendResult.failed(notification.channel)
+        return NotificationSendResult.accepted(notification.channel)
+
+
+def _owner_with_protected_email(engine: Engine) -> int:
+    protector = AdministrativeEmailProtector(
+        key_ring=CryptographyKeyRing(load_cryptography_key_configuration()),
+        secret_generator=SequenceSecretGenerator((b"\x81" * 12,)),
+    )
+    protected = protector.protect("synthetic.owner@example.test")
+    with engine.begin() as connection:
+        owner_id = connection.execute(
+            text(
+                "INSERT INTO admin_accounts (role, status, password_hash) "
+                "VALUES ('owner', 'active', '$argon2id$synthetic') "
+                "RETURNING admin_account_id"
+            )
+        ).scalar_one()
+        connection.execute(
+            text(
+                "INSERT INTO admin_email_claims "
+                "(admin_account_id, claim_kind, lookup_digest, email_ciphertext, key_version) "
+                "VALUES (:account_id, 'current', :lookup_digest, :ciphertext, :key_version)"
+            ),
+            {
+                "account_id": owner_id,
+                "lookup_digest": protected.lookup_digest,
+                "ciphertext": protected.email_ciphertext,
+                "key_version": protected.key_version,
+            },
+        )
+    return owner_id
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("notice_outcome", ["accepted", "failed", "exception"])
+def test_t096_invitation_notice_targets_only_owner_and_failure_does_not_undo_invitation(
+    migrated_engine: Engine, notice_outcome: str
+) -> None:
+    owner_id = _owner_with_protected_email(migrated_engine)
+    sender = _InvitationNoticeSender(first_notice_outcome=notice_outcome)
+
+    outcome = PostgresStaffInvitationOperations(
+        engine=migrated_engine, email_sender=sender
+    ).invite(
+        actor=AdministrativeActor(account_id=owner_id, role="owner"),
+        email="synthetic.staff@example.test",
+    )
+
+    assert len(sender.notifications) == 2, [n.recipient for n in sender.notifications]
+    owner_notice, staff_activation_link = sender.notifications
+    assert owner_notice.recipient == "synthetic.owner@example.test"
+    assert owner_notice.channel == EMAIL_CHANNEL
+    assert "token" not in owner_notice.content.lower()
+    assert "contraseña" not in owner_notice.content.lower()
+    assert "código" not in owner_notice.content.lower()
+    assert staff_activation_link.recipient == "synthetic.staff@example.test"
+    assert "token=" in staff_activation_link.content
+    with migrated_engine.connect() as connection:
+        persisted = connection.execute(
+            text(
+                "SELECT event, template, status, sanitized_error "
+                "FROM security_notification_deliveries WHERE event = 'staff_invited'"
+            )
+        ).one()
+        invited_state = connection.execute(
+            text(
+                "SELECT a.status, l.status, l.delivery_status "
+                "FROM admin_accounts a JOIN security_links l "
+                "ON l.admin_account_id = a.admin_account_id WHERE a.role = 'staff'"
+            )
+        ).one()
+    expected_status = "accepted" if notice_outcome == "accepted" else "failed"
+    assert tuple(persisted) == (
+        "staff_invited",
+        "staff_invitation_notice",
+        expected_status,
+        None if expected_status == "accepted" else "security delivery failed.",
+    )
+    assert tuple(invited_state) == ("pending", "active", "accepted")
+
+    # Replaying a dispatch for an already claimed/completed notice must not call the provider again.
+    with migrated_engine.connect() as connection:
+        delivery_id = connection.execute(
+            text(
+                "SELECT security_notification_delivery_id "
+                "FROM security_notification_deliveries WHERE event = 'staff_invited'"
+            )
+        ).scalar_one()
+    deliver_security_notices(
+        engine=migrated_engine,
+        email_sender=sender,
+        notices=(
+            SecurityNotificationDispatch(
+                delivery_id=delivery_id,
+                event="staff_invited",
+                template="staff_invitation_notice",
+                recipient="synthetic.owner@example.test",
+            ),
+        ),
+    )
+    assert len(sender.notifications) == 2
+
+
 @pytest.mark.integration
 def test_t035_rejects_existing_staff_or_claimed_email_without_new_account_or_link(
     migrated_engine: Engine,
@@ -427,6 +550,11 @@ def test_t037_resend_invalidates_the_prior_link_and_starts_a_fresh_24_hour_windo
         owner_account_id=owner_id,
         token=b"\x9a" * 32,
     )
+    with migrated_engine.begin() as connection:
+        PostgresSecurityLinkStore(connection).mark_delivery_accepted(
+            link_id=replacement.issued_link.stored_link.link_id,
+            current_time=NOW,
+        )
 
     with migrated_engine.connect() as connection:
         account = connection.execute(

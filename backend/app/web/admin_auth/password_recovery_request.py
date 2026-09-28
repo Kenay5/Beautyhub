@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Annotated, Protocol
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine
 
@@ -17,9 +18,12 @@ from backend.app.application.admin_access.password_recovery_request import (
 from backend.app.application.admin_access.security_links import SecurityLinkLifecycle
 from backend.app.application.clock import SystemClock
 from backend.app.application.entropy import SystemSecretGenerator
+from backend.app.application.public_request_limit import (
+    PublicRequestRateLimitError,
+)
+from backend.app.application.security_link_delivery import send_security_link_notification
 from backend.app.application.transactional_notifications import (
     EMAIL_CHANNEL,
-    NotificationSendResult,
     OutboundNotification,
     TransactionalNotificationPort,
 )
@@ -34,10 +38,17 @@ from backend.app.infrastructure.persistence.database import create_postgres_engi
 from backend.app.infrastructure.persistence.security_link_repository import (
     PostgresSecurityLinkStore,
 )
+from backend.app.infrastructure.persistence.security_message_rate_limit_repository import (
+    PostgresPublicSecurityMessageBudget,
+    PostgresSecurityMessageActionBudget,
+)
 from backend.app.infrastructure.security.admin_email_protection import (
     AdministrativeEmailProtector,
 )
 from backend.app.infrastructure.security.cryptography_key_ring import CryptographyKeyRing
+from backend.app.infrastructure.security.administrative_rate_limit_subject import (
+    AdministrativeRateLimitSubjectProtector,
+)
 from backend.app.infrastructure.settings import (
     load_cryptography_key_configuration,
     load_settings,
@@ -46,10 +57,14 @@ from backend.app.infrastructure.security.security_link_protection import (
     SecurityLinkProtector,
 )
 from backend.app.web.admin_auth.security_link_transport import security_link_fragment
+from backend.app.web.public_request_protection import (
+    public_request_subject_fingerprint,
+)
 
 
 router = APIRouter(prefix="/api/admin/password-recovery", tags=["admin-password-recovery"])
 _GENERIC_MESSAGE = "Si existe una cuenta activa con ese correo, recibirás instrucciones para recuperar tu contraseña."
+_RATE_LIMIT_DETAIL = "Demasiadas solicitudes. Inténtalo más tarde."
 
 
 class PasswordRecoveryRequestBody(BaseModel):
@@ -72,11 +87,13 @@ class PostgresPasswordRecoveryOperations:
         *,
         engine: Engine,
         email_sender: TransactionalNotificationPort | None = None,
+        public_subject_fingerprint: bytes | None = None,
     ) -> None:
         self._engine = engine
         self._email_sender = email_sender or EmailSimulator(outcome="accepted")
         self._clock = SystemClock()
         self._key_ring = CryptographyKeyRing(load_cryptography_key_configuration())
+        self._public_subject_fingerprint = public_subject_fingerprint
 
     def request(self, *, email: str) -> bool | None:
         email_protector = AdministrativeEmailProtector(
@@ -84,6 +101,7 @@ class PostgresPasswordRecoveryOperations:
             secret_generator=SystemSecretGenerator(),
         )
         with self._engine.begin() as connection:
+            entropy = SystemSecretGenerator()
             store = PostgresAdministrativeRecoveryAccountStore(
                 connection,
                 email_protector=email_protector,
@@ -97,8 +115,29 @@ class PostgresPasswordRecoveryOperations:
                 link_lifecycle=SecurityLinkLifecycle(
                     store=PostgresSecurityLinkStore(connection),
                     clock=self._clock,
-                    secret_generator=SystemSecretGenerator(),
+                    secret_generator=entropy,
                     protector=SecurityLinkProtector(key_ring=self._key_ring),
+                ),
+                security_message_budget=PostgresSecurityMessageActionBudget(
+                    connection=connection,
+                    subject_protector=AdministrativeRateLimitSubjectProtector(
+                        key_ring=self._key_ring
+                    ),
+                    clock=self._clock,
+                    secret_generator=entropy,
+                ),
+                public_security_message_budget=(
+                    PostgresPublicSecurityMessageBudget(
+                        connection=connection,
+                        public_subject_fingerprint=self._public_subject_fingerprint,
+                        subject_protector=AdministrativeRateLimitSubjectProtector(
+                            key_ring=self._key_ring
+                        ),
+                        clock=self._clock,
+                        secret_generator=entropy,
+                    )
+                    if self._public_subject_fingerprint is not None
+                    else None
                 ),
             ).prepare(email=email)
         if prepared is None:
@@ -109,16 +148,17 @@ class PostgresPasswordRecoveryOperations:
             "30 minutos: /admin/password-recovery"
             + security_link_fragment(prepared.issued_link.token)
         )
-        try:
-            result = self._email_sender.send(
-                OutboundNotification(
-                    channel=EMAIL_CHANNEL,
-                    recipient=prepared.recipient.email,
-                    content=content,
-                )
+        result = send_security_link_notification(
+            sender=self._email_sender,
+            notification=OutboundNotification(
+                channel=EMAIL_CHANNEL,
+                recipient=prepared.recipient.email,
+                content=content,
+                idempotency_key=(
+                    f"security-link:{prepared.issued_link.stored_link.link_id}"
+                ),
             )
-        except Exception:
-            result = NotificationSendResult.failed(EMAIL_CHANNEL)
+        )
 
         accepted = result.channel == EMAIL_CHANNEL and result.outcome == "accepted"
         current_time = self._clock.now()
@@ -127,6 +167,11 @@ class PostgresPasswordRecoveryOperations:
             link_id = prepared.issued_link.stored_link.link_id
             if accepted:
                 links.mark_delivery_accepted(
+                    link_id=link_id,
+                    current_time=current_time,
+                )
+            elif result.outcome == "uncertain":
+                links.mark_delivery_uncertain(
                     link_id=link_id,
                     current_time=current_time,
                 )
@@ -146,10 +191,15 @@ class PostgresPasswordRecoveryOperations:
         return accepted
 
 
-def get_password_recovery_operations() -> Iterator[PasswordRecoveryOperations]:
+def get_password_recovery_operations(
+    request: Request,
+) -> Iterator[PasswordRecoveryOperations]:
     engine = create_postgres_engine(load_settings().database_url)
     try:
-        yield PostgresPasswordRecoveryOperations(engine=engine)
+        yield PostgresPasswordRecoveryOperations(
+            engine=engine,
+            public_subject_fingerprint=public_request_subject_fingerprint(request),
+        )
     finally:
         engine.dispose()
 
@@ -161,8 +211,15 @@ def request_administrative_password_recovery(
         PasswordRecoveryOperations,
         Depends(get_password_recovery_operations, scope="function"),
     ],
-) -> PasswordRecoveryRequestResponse:
+) -> PasswordRecoveryRequestResponse | JSONResponse:
     """Never distinguish missing accounts or failed recovery-link delivery."""
 
-    operations.request(email=body.email)
+    try:
+        operations.request(email=body.email)
+    except PublicRequestRateLimitError:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": _RATE_LIMIT_DETAIL},
+        )
+
     return PasswordRecoveryRequestResponse(message=_GENERIC_MESSAGE)

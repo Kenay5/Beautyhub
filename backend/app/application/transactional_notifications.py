@@ -7,7 +7,7 @@ from typing import Literal, Protocol, TypeAlias
 
 
 NotificationChannel: TypeAlias = Literal["email", "whatsapp"]
-NotificationSendOutcome: TypeAlias = Literal["accepted", "failed"]
+NotificationSendOutcome: TypeAlias = Literal["accepted", "failed", "uncertain"]
 
 EMAIL_CHANNEL: NotificationChannel = "email"
 WHATSAPP_CHANNEL: NotificationChannel = "whatsapp"
@@ -20,9 +20,14 @@ class OutboundNotification:
     channel: NotificationChannel
     recipient: str = field(repr=False)
     content: str = field(repr=False)
+    idempotency_key: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _require_channel(self.channel)
+        if self.idempotency_key is not None and (
+            not isinstance(self.idempotency_key, str) or not self.idempotency_key
+        ):
+            raise ValueError("notification idempotency key is invalid.")
 
 
 @dataclass(frozen=True)
@@ -34,8 +39,8 @@ class NotificationSendResult:
 
     def __post_init__(self) -> None:
         _require_channel(self.channel)
-        if self.outcome not in {"accepted", "failed"}:
-            raise ValueError("notification outcome must be accepted or failed.")
+        if self.outcome not in {"accepted", "failed", "uncertain"}:
+            raise ValueError("notification outcome is invalid.")
 
     @classmethod
     def accepted(cls, channel: NotificationChannel) -> NotificationSendResult:
@@ -48,6 +53,16 @@ class NotificationSendResult:
         """Represent a controlled immediate sending failure."""
 
         return cls(channel=channel, outcome="failed")
+
+    @classmethod
+    def uncertain(cls, channel: NotificationChannel) -> NotificationSendResult:
+        """Represent an unresolved provider outcome without assuming delivery."""
+
+        return cls(channel=channel, outcome="uncertain")
+
+
+class NotificationDeliveryUncertain(RuntimeError):
+    """The provider may have accepted a message but cannot confirm its outcome."""
 
 
 class TransactionalNotificationPort(Protocol):

@@ -74,9 +74,23 @@ class PostgresSecurityNotificationDeliveryStore(SecurityNotificationDeliveryStor
             .where(
                 SecurityNotificationDeliveryModel.security_notification_delivery_id
                 == delivery_id,
-                SecurityNotificationDeliveryModel.status == "pending",
+                SecurityNotificationDeliveryModel.status.in_(("pending", "uncertain")),
             )
             .values(**values)
         )
         if updated.rowcount != 1:
             raise RuntimeError("security delivery intent is no longer pending.")
+
+    def claim_for_dispatch(self, *, delivery_id: int) -> bool:
+        """Atomically reserve one pending intent so concurrent/repeated dispatches skip it."""
+
+        updated = self._connection.execute(
+            update(SecurityNotificationDeliveryModel)
+            .where(
+                SecurityNotificationDeliveryModel.security_notification_delivery_id
+                == delivery_id,
+                SecurityNotificationDeliveryModel.status == "pending",
+            )
+            .values(status="uncertain")
+        )
+        return updated.rowcount == 1

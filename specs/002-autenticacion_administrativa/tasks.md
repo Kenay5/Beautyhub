@@ -391,15 +391,15 @@
 
 ## 8. Límites, avisos y restauración
 
-- [ ] **T091 — Limitar solicitudes públicas por origen**
+- [x] **T091 — Limitar solicitudes públicas por origen**
   - **RF/criterios:** RNF-01 a RNF-03; apoyo de RF-01, RF-03, RF-06 y RF-07.
   - **Hecho cuando:** el proxy confiable produce una huella de IP y recuperación, reemplazo, login y disponibilidad comparten 20 solicitudes por 15 minutos.
 
-- [ ] **T092 — Limitar solicitudes administrativas por cuenta**
+- [x] **T092 — Limitar solicitudes administrativas por cuenta**
   - **RF/criterios:** RNF-01 y RNF-02; apoyo de RF-10.
   - **Hecho cuando:** se permiten 120 solicitudes por minuto y un 429 no cierra, prolonga ni modifica la sesión.
 
-- [ ] **T093 — Limitar envíos manuales de seguridad**
+- [x] **T093 — Limitar envíos manuales de seguridad**
   - **RF/criterios:** RNF-01 y RNF-02; apoyo de RF-02, RF-06 a RF-08 y RF-12.
   - **Hecho cuando:** todos los mensajes manuales de seguridad comparten 10 intentos por cuenta en 15 minutos.
 
@@ -407,19 +407,19 @@
   - **RF/criterios:** RNF-01 y RNF-02; integración con RF-10-CA-01 y CA-02 y la spec 001.
   - **Hecho cuando:** existen 30 acciones por cuenta en 15 minutos, cada reintento manual de una notificación fallida cuenta una vez y correo más WhatsApp de una misma acción cuentan una sola vez.
 
-- [ ] **T095 — Resolver límites superpuestos bajo concurrencia**
+- [x] **T095 — Resolver límites superpuestos bajo concurrencia**
   - **RF/criterios:** RF-03-CA-03 a CA-05; RNF-01 y RNF-02.
   - **Hecho cuando:** solo continúa quien tiene capacidad en todos los límites, avisos automáticos de seguridad y recordatorios automáticos de citas están exentos, sus reintentos manuales no lo están y 429 no altera fallos ni bloqueos.
 
-- [ ] **T096 — Crear avisos con destinatarios exactos**
+- [x] **T096 — Crear avisos con destinatarios exactos**
   - **RF/criterios:** RF-12-CA-01 a CA-06.
   - **Hecho cuando:** titular, propietario y ambos correos reciben únicamente sus avisos sin secretos; una acción confirmada, bloqueo o desactivación no se revierte si el aviso falla.
 
-- [ ] **T097 — Resolver entregas de enlaces y reintentos**
+- [x] **T097 — Resolver entregas de enlaces y reintentos**
   - **RF/criterios:** RF-02-CA-09; RF-12-CA-07 a CA-10.
   - **Hecho cuando:** aceptación, rechazo, incertidumbre, fallo tardío y reintento distinto terminan en un enlace y estado seguro coherentes; la respuesta pública sigue genérica, la identificada informa sin detalles y una recuperación forzada conserva la contraseña anterior inutilizable.
 
-- [ ] **T098 — Probar avisos y límites con PostgreSQL y concurrencia**
+- [x] **T098 — Probar avisos y límites con PostgreSQL y concurrencia**
   - **RF/criterios:** RF-12; RNF-01 y RNF-02.
   - **Hecho cuando:** bordes temporales, ráfagas, doble canal, idempotencia y resultados del proveedor no superan límites ni duplican entregas.
 

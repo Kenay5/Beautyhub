@@ -171,7 +171,7 @@ class PostgresOwnEmailChangeStore(OwnEmailChangeStore):
                 SecurityLinkModel.admin_account_id == account_id,
                 SecurityLinkModel.purpose == "email_change",
                 SecurityLinkModel.status == "active",
-                SecurityLinkModel.delivery_status == "pending",
+                SecurityLinkModel.delivery_status.in_(("pending", "uncertain", "accepted")),
             )
             .values(
                 status="invalidated",

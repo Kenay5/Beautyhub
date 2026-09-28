@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 
+from backend.app.application.admin_access.authorization import AdministrativeActor
 from backend.app.application.admin_access.audit import RecordAdministrativeAuditEvent
 from backend.app.application.admin_access.logout import CloseAdministrativeSession
 from backend.app.application.clock import SystemClock
@@ -32,6 +33,7 @@ from backend.app.web.admin_auth.mutation_protection import (
     decode_administrative_browser_secret,
     require_administrative_mutation_protection,
 )
+from backend.app.web.admin_auth.session_context import get_authenticated_admin_actor
 
 
 router = APIRouter(prefix="/api/admin/sessions", tags=["admin-sessions"])
@@ -65,6 +67,7 @@ def get_administrative_session_closer() -> Iterator[CloseAdministrativeSession]:
 @router.delete("/current", status_code=status.HTTP_204_NO_CONTENT)
 def close_administrative_session(
     response: Response,
+    actor: Annotated[AdministrativeActor, Depends(get_authenticated_admin_actor)],
     protection: Annotated[
         None,
         Depends(require_administrative_mutation_protection, scope="function"),
@@ -80,7 +83,7 @@ def close_administrative_session(
 ) -> None:
     """End the authenticated session and remove its browser cookie."""
 
-    del protection
+    del actor, protection
     session_token = decode_administrative_browser_secret(session_cookie)
     if session_token is None:
         raise HTTPException(status_code=401, detail=_AUTHENTICATION_DETAIL)

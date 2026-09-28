@@ -50,7 +50,7 @@ from backend.tests.integration.admin_access.test_admin_login_session import (
 from backend.app.web.admin_auth import change_password as password_change_web
 
 
-def _operation(connection) -> ChangeAdministrativePassword:
+def _operation(connection, *, dispatches=None) -> ChangeAdministrativePassword:
     clock = FixedClock(NOW)
     entropy = SystemSecretGenerator()
     ring = _ring()

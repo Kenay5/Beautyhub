@@ -75,6 +75,9 @@ TEST_OWNER_EMAIL = "synthetic.owner@example.test"
 TEST_OWNER_PASSWORD = "synthetic owner phrase for browser tests"
 TEST_OWNER_TOTP_BASE32 = "JBSWY3DPEHPK3PXP"
 TEST_OWNER_RECOVERY_CODE = "ABCDEFGHJKLMNPQR"
+_STAFF_INVITATION_NOTICE_CONTENT = (
+    "Se registró una invitación para una cuenta de personal."
+)
 
 # Every route in this module is mounted only by the test-specific ASGI app.
 _test_database_url = load_test_database_url().reveal()
@@ -114,6 +117,11 @@ class _InvitationMailbox:
     def send(self, notification: OutboundNotification) -> NotificationSendResult:
         if notification.channel != EMAIL_CHANNEL:
             raise ValueError("invitation mailbox accepts email only.")
+        # The owner notice is a separate T096 delivery, not the invitation-link
+        # delivery controlled by these Playwright scenarios. Keep it out of the
+        # link mailbox and do not consume the next simulated link-delivery outcome.
+        if notification.content == _STAFF_INVITATION_NOTICE_CONTENT:
+            return NotificationSendResult.accepted(EMAIL_CHANNEL)
         with self._lock:
             outcome = self._next_outcome
             self._messages.append(
@@ -157,7 +165,8 @@ def _seed_owner() -> None:
         connection.execute(
             text(
                 "TRUNCATE TABLE admin_accounts, owner_bootstrap_state, "
-                "security_notification_deliveries "
+                "security_notification_deliveries, rate_limit_events, "
+                "rate_limit_guards "
                 "RESTART IDENTITY CASCADE"
             )
         )

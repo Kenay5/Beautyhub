@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
@@ -65,6 +66,16 @@ class AdministrativeLockRecipientDirectory(Protocol):
     def lock_notification_recipients(self, *, account_id: int) -> tuple[str, ...]: ...
 
 
+@dataclass(frozen=True)
+class SecurityNotificationDispatch:
+    """Transient, server-derived data needed to deliver one committed notice."""
+
+    delivery_id: int
+    event: str
+    template: str
+    recipient: str = field(repr=False)
+
+
 class RecordAdministrativeCredentialFailure:
     """Record one rejected request using the approved, controlled clock."""
 
@@ -117,11 +128,13 @@ class RecordProtectedAdministrativeCredentialFailure:
         audit: AdministrativeLockAuditRecorder,
         notifications: AdministrativeLockNotificationRecorder,
         recipients: AdministrativeLockRecipientDirectory,
+        dispatches: list[SecurityNotificationDispatch] | None = None,
     ) -> None:
         self._failure_recorder = failure_recorder
         self._audit = audit
         self._notifications = notifications
         self._recipients = recipients
+        self._dispatches = dispatches
 
     def record(
         self,
@@ -146,12 +159,21 @@ class RecordProtectedAdministrativeCredentialFailure:
         for recipient in self._recipients.lock_notification_recipients(
             account_id=account_id
         ):
-            self._notifications.record(
+            delivery = self._notifications.record(
                 event="account_locked",
                 template="account_locked_notice",
                 recipient=recipient,
                 idempotency_reference=idempotency_reference,
             )
+            if self._dispatches is not None:
+                self._dispatches.append(
+                    SecurityNotificationDispatch(
+                        delivery_id=delivery.delivery_id,
+                        event="account_locked",
+                        template="account_locked_notice",
+                        recipient=recipient,
+                    )
+                )
         return outcome
 
 
